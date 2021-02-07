@@ -227,7 +227,7 @@ class KodiMediaset(object):
                 self.elenco_sezioni_list(brandId)
 
     def elenco_sezioni_list(self, brandId):
-        els, _ = self.med.OttieniSezioniProgramma(brandId, sort='mediasetprogram$order')
+        els, _ = self.med.OttieniSezioniProgramma(brandId, sort='mediasetprogram$order|asc')
         if len(els) == 2:
             self.elenco_video_list(els[1]['mediasetprogram$subBrandId'])
         else:
@@ -235,7 +235,7 @@ class KodiMediaset(object):
             self.__analizza_elenco(els)
         kodiutils.endScript()
 
-    def elenco_video_list(self, sub_brand_id, mode='programma', sort='asc', page=0, size=0):
+    def elenco_video_list(self, sub_brand_id, mode='programma', sort='desc', page=0, size=0):
         if not size:
             size = self.iperpage
         els, hasMore = self.med.OttieniVideoSezione(
@@ -243,7 +243,7 @@ class KodiMediaset(object):
         self.__analizza_elenco(els, True)
         if hasMore:
             kodiutils.addListItem(kodiutils.LANGUAGE(32130), {'mode': mode, 'sub_brand_id': sub_brand_id, 'sort': sort, 'page': int(page)+1, 'size': size})
-            kodiutils.addListItem(kodiutils.LANGUAGE(32139), {'mode': mode, 'sub_brand_id': sub_brand_id, 'sort': 'desc' if sort=='asc' else 'asc', 'page': 0, 'size': size})
+            # kodiutils.addListItem(kodiutils.LANGUAGE(32139), {'mode': mode, 'sub_brand_id': sub_brand_id, 'sort': 'desc' if sort=='asc' else 'asc', 'page': 0, 'size': size})
         kodiutils.endScript()
 
     def isAnon(self):
