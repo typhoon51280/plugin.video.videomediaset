@@ -1,50 +1,110 @@
-import xbmc # pylint: disable=import-error
-from phate89lib import kodiutils  # pylint: disable=import-error
+# -*- coding: utf-8 -*-
+#
 
-class scrobblerService:
+import xbmc
+import time
+import logging
+from phate89lib import kodiutils  # pyright: reportMissingImports=false
+import math
+
+
+logger = logging.getLogger(__name__)
+
+class Scrobbler():
+    isPlaying = False
+    isPaused = False
+    stopScrobbler = False
+    isPVR = False
+    isMultiPartEpisode = False
+    lastMPCheck = 0
+    curMPEpisode = 0
+    videoDuration = 1
+    watchedTime = 0
+    pausedAt = 0
+    curVideo = None
+    curVideoInfo = None
+    playlistIndex = 0
+    cache = {}
 
     def __init__(self):
-        kodiutils.log('[scrobblerService] scrobblerService init', 4)
+        logger.debug("init()")
 
-    def run(self):
-        # startup_delay = kodiutils.getSettingAsNum('startup_delay')
-        # if startup_delay:
-        #     kodiutils.log("Delaying startup by {} seconds.".format(startup_delay), 4)
-        #     xbmc.sleep(startup_delay * 1000)
+    def playbackStarted(self, data):
+        logger.debug("playbackStarted(data: %s)" % data)
+        if not data:
+            return
+        self.curVideo = data
+        self.curVideoInfo = None
+        self.isPlaying = True
 
-        kodiutils.log("[scrobblerService] scrobblerService thread starting.", 4)
+        if not kodiutils.getSettingAsBool('scrobble_fallback'):
+            logger.debug('Aborting scrobble to avoid fallback: %s' % (self.curVideo))
+            return
 
-        # setup event driven classes
-        self.Player = player()
-        self.Monitor = monitor()
+        if data and 'id' in data:
+            self.cache[data['id']] = data
 
-        # start loop for events
-        while not self.Monitor.abortRequested():
+    def playbackResumed(self):
+        if not self.isPlaying:
+            return
 
-            if self.Monitor.waitForAbort(10):
-                # Abort was requested while waiting. We should exit
-                break
+        logger.debug("playbackResumed()")
+        if self.isPaused:
+            p = time.time() - self.pausedAt
+            logger.debug("Resumed after: %s" % str(p))
+            self.pausedAt = 0
+            self.isPaused = False
+            self.__scrobble('start')
 
-        # we are shutting down
-        kodiutils.log("[scrobblerService] scrobblerService shut down.", 4)
+    def playbackPaused(self):
+        if not self.isPlaying or self.isPVR:
+            return
 
-        # delete player/monitor
-        del self.Player
-        del self.Monitor
+        logger.debug("playbackPaused()")
+        logger.debug("Paused after: %s" % str(self.watchedTime))
+        self.isPaused = True
+        self.pausedAt = time.time()
+        self.__scrobble('pause')
 
+    def playbackSeek(self):
+        if not self.isPlaying:
+            return
 
-class monitor(xbmc.Monitor):
-    def __init__(self, *args, **kwargs):
-        kodiutils.log("[scrobblerService] monitor initialiazed", 4)
+        logger.debug("playbackSeek()")
+        self.transitionCheck(isSeek=True)
 
-class player(xbmc.Player):
-    def __init__(self, *args, **kwargs):
-        kodiutils.log("[scrobblerService] monitor initialiazed", 4)
-    
-    def onAVStarted(self):
-        kodiutils.log("[scrobblerService] onAVStarted", 4)
-        if self.isPlayingVideo():
-            kodiutils.log("[scrobblerService] isPlayingVideo", 4)
-            self.seekTime(300)
-        else:
-            kodiutils.log("[scrobblerService] NOT isPlayingVideo", 4)
+    def playbackEnded(self):
+        if not self.isPVR:
+            self.videosToRate.append(self.curVideoInfo)
+        if not self.isPlaying:
+            return
+
+        logger.debug("playbackEnded()")
+        if not self.videosToRate and not self.isPVR:
+            logger.debug("Warning: Playback ended but video forgotten.")
+            return
+        self.isPlaying = False
+        self.stopScrobbler = False
+        if self.watchedTime != 0:
+            if 'type' in self.curVideo:
+                self.__scrobble('stop')
+                ratingCheck(self.curVideo['type'], self.videosToRate, self.watchedTime, self.videoDuration)
+            self.watchedTime = 0
+            self.isPVR = False
+            self.isMultiPartEpisode = False
+        self.videosToRate = []
+        self.curVideoInfo = None
+        self.curVideo = None
+        self.playlistIndex = 0
+
+    def __scrobble(self, position):
+        logger.debug("scrobble()")
+                
+                
+    def __scrobbleNotification(self, info):
+        if not self.curVideoInfo:
+            return
+
+        if kodiUtilities.getSettingAsBool("scrobble_notification"):
+            s = utilities.getFormattedItemName(self.curVideo['type'], info[self.curVideo['type']])
+            kodiUtilities.notification(kodiUtilities.getString(32015), s)

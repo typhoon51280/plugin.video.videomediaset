@@ -42,6 +42,30 @@ msgctxt "#32006"
 msgid "Installa widevine per i contenuti protetti"
 msgstr "Installa widevine per i contenuti protetti"
 
+msgctxt "#32007"
+msgid "Scrobbling Mediaset"
+msgstr "Scrobbling Mediaset"
+
+msgctxt "#32008"
+msgid "OFF"
+msgstr "OFF"
+
+msgctxt "#32009"
+msgid "CUSTOM"
+msgstr "CUSTOM"
+
+msgctxt "#32010"
+msgid "NATIVO"
+msgstr "NATIVO"
+
+msgctxt "#32011"
+msgid "Scrobbling Mediaset Interval"
+msgstr "Scrobbling Mediaset Interval"
+
+msgctxt "#32012"
+msgid "Riprendi automatico"
+msgstr "Riprendi automatico"
+
 msgctxt "#32101"
 msgid "Tutto A-Z"
 msgstr "Tutto A-Z"

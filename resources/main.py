@@ -11,7 +11,7 @@ class KodiMediaset(object):
     def __init__(self):
         self.med = Mediaset()
         self.med.log = kodiutils.log
-        self.iperpage = kodiutils.getSetting('itemsperpage')
+        self.iperpage = min(kodiutils.getSetting('itemsperpage'), 100)
         self.ua = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
                    '(KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36')
 
@@ -21,6 +21,8 @@ class KodiMediaset(object):
     def __analizza_elenco(self, progs, setcontent=False, titlewd=False):
         if not progs:
             return
+        # scrobbling = kodiutils.getSettingAsNum('scrobbling')
+        # kodiutils.log('scrobbling: {}'.format(str(scrobbling)), 4)
         if setcontent:
             self.__imposta_tipo_media(progs[0])
         for prog in progs:
@@ -31,16 +33,26 @@ class KodiMediaset(object):
                 if prog['media']:
                     media = prog['media'][0]
                     args = {'mode': 'video'}
-                    properties = {'ResumeTime': '', 'TotalTime': ''}
+                    properties = {}
+                    position = prog['position'] if 'position' in prog else 0
                     if 'pid' in media:
                         args['pid'] = media['pid']
                     elif 'publicUrl' in media:
                         args['pid'] = media['publicUrl'].split('/')[-1]
-                    if 'position' in prog and 'mediasetprogram$duration' in prog and len(str(prog['position']))>0:
-                        properties['ResumeTime'] = str(prog['position'])
+                    if 'guid' in media:
+                        args['guid'] = media['guid']
+                    if 'mediasetprogram$duration' in prog:
                         properties['TotalTime'] = str(prog['mediasetprogram$duration'])
-                    kodiutils.addListItem(infos["title"], args,
-                                          videoInfo=infos, arts=arts, isFolder=False, properties=properties)
+                    properties['ResumeTime'] = '0.0'
+                    # if not scrobbling:
+                    #     properties['ResumeTime'] = '0.0'
+                    # elif scrobbling == 2 and media['guid']:
+                    #     user = kodiutils.getSetting('email')
+                    #     password = kodiutils.getSetting('password')
+                    #     if user and password and self.med.login(user, password):
+                    #         offset = self.med.getProgress(media['guid'])
+                    #         properties['ResumeTime'] = str(offset)
+                    kodiutils.addListItem(infos["title"], args, videoInfo=infos, arts=arts, isFolder=False, properties=properties)
             elif 'tuningInstruction' in prog:
                 data = {'mode': 'live'}
                 if prog['tuningInstruction'] and not prog['mediasetstation$eventBased']:
@@ -135,7 +147,6 @@ class KodiMediaset(object):
     def elenco_ondemand(self, id, template=None, sort=None, order='asc'):
         kodiutils.log(('template: {}').format(str(template)), 4)
         for sec in self.med.OttieniOnDemandGeneri(id, sort, order):
-            # kodiutils.log(('SEC: {}').format(str(sec)), 4)
             if template and (('template' in sec and not str(sec['template']) in template.split('|')) or not 'template' in sec):
                 continue
             if "uxReference" in sec:
@@ -144,12 +155,12 @@ class KodiMediaset(object):
                 kodiutils.addListItem(sec["title"], {'mode': 'magazine', 'newsFeedUrl': sec['newsFeedUrl']})
             elif "feedurl" in sec:
                 kodiutils.addListItem(sec["title"], {'mode': 'cult', 'feedurl': sec['feedurl']})
-        kodiutils.addListItem('Ordina {}'.format('DESC' if sort and order == 'asc' else 'ASC'), {
-            'mode': 'ondemand',
-            'id': id,
-            'sort': sort if sort else 'title',
-            'order': 'desc' if sort and order == 'asc' else 'asc'
-            })
+        # kodiutils.addListItem('Ordina {}'.format('DESC' if sort and order == 'asc' else 'ASC'), {
+        #     'mode': 'ondemand',
+        #     'id': id,
+        #     'sort': sort if sort else 'title',
+        #     'order': 'desc' if sort and order == 'asc' else 'asc'
+        #     })
         kodiutils.endScript(closedir=True)
 
     def elenco_cult_root(self):
@@ -185,11 +196,11 @@ class KodiMediaset(object):
             self.__analizza_elenco(els, True)
             if hasmore:
                 kodiutils.addListItem(kodiutils.LANGUAGE(32130), {'mode': 'sezione', 'id': id, 'page': int(page) + 1})
-            else:
-                kodiutils.addListItem('Ordina {}'.format('DESC' if sort and order == 'asc' else 'ASC'), {
-                    'mode': 'sezione', 'id': id, 
-                    'sort': sort if sort else 'title',
-                    'order': 'desc' if sort and order == 'asc' else 'asc'})
+            # else:
+            #     kodiutils.addListItem('Ordina {}'.format('DESC' if sort and order == 'asc' else 'ASC'), {
+            #         'mode': 'sezione', 'id': id, 
+            #         'sort': sort if sort else 'title',
+            #         'order': 'desc' if sort and order == 'asc' else 'asc'})
         kodiutils.endScript()
 
     def elenco_stagioni_list(self, series_id, title, sort=None, order='asc'):
@@ -235,10 +246,21 @@ class KodiMediaset(object):
             kodiutils.addListItem(kodiutils.LANGUAGE(32139), {'mode': mode, 'sub_brand_id': sub_brand_id, 'sort': 'desc' if sort=='asc' else 'asc', 'page': 0, 'size': size})
         kodiutils.endScript()
 
+    def isAnon(self):
+        user = kodiutils.getSetting('email')
+        password = kodiutils.getSetting('password')
+        return user == '' or password == ''
+
     def personal_root(self):
-        kodiutils.addListItem('Continua a Guardare', {'mode': 'continuewatch'})
-        kodiutils.addListItem('Preferiti', {'mode': 'favorites'})
-        kodiutils.addListItem('Guarda Dopo', {'mode': 'watchlist'})
+        if self.isAnon():
+            kodiutils.showOkDialog('ATTENTION', 'Configurare Username e Password del proprio account Mediaset per accedere alla sezione personale di MediasetPlay')
+            kodiutils.openSettings()
+        if self.isAnon():
+            self.root()
+        else:
+            kodiutils.addListItem('Continua a Guardare', {'mode': 'continuewatch'})
+            kodiutils.addListItem('Preferiti', {'mode': 'favorites'})
+            kodiutils.addListItem('Guarda Dopo', {'mode': 'watchlist'})
         kodiutils.endScript()
 
     def continuewatch(self):
@@ -406,11 +428,11 @@ class KodiMediaset(object):
             kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32136))
             kodiutils.setResolvedUrl(solved=False)
             return
-        self.riproduci_video(res['media'][0]['pid'])
+        self.riproduci_video(guid=guid, pid=res['media'][0]['pid'])
 
-    def riproduci_video(self, pid, live=False,properties=None):
+    def riproduci_video(self, guid=None, pid=None, live=False):
         from inputstreamhelper import Helper  # pylint: disable=import-error
-        kodiutils.log("Trying to get the video from pid" + pid)
+        kodiutils.log("Trying to get the video from pid %s" % pid)
         data = self.med.OttieniDatiVideo(pid, live)
         if data['type'] == 'video/mp4':
             kodiutils.setResolvedUrl(data['url'])
@@ -423,17 +445,31 @@ class KodiMediaset(object):
         headers = '&User-Agent={useragent}'.format(
             useragent=self.ua)
         props = {'manifest_type': 'mpd', 'stream_headers': headers}
+        properties = {}
+        isAutenticated = False
+        scrobbling = kodiutils.getSettingAsNum('scrobbling')
+        if scrobbling:
+            properties['guid'] = guid
+            if scrobbling == 1:
+                user = kodiutils.getSetting('email')
+                password = kodiutils.getSetting('password')
+                isAutenticated = self.med.login(user, password)
+                if isAutenticated:
+                    offset = self.med.getProgress(guid)
+                    properties['offset'] = str(offset)
+
         if data['security']:
-            user = kodiutils.getSetting('email')
-            password = kodiutils.getSetting('password')
-            if user == '' or password == '':
-                kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32134))
-                kodiutils.setResolvedUrl(solved=False)
-                return
-            if not self.med.login(user, password):
-                kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32135))
-                kodiutils.setResolvedUrl(solved=False)
-                return
+            if not isAutenticated:
+                user = kodiutils.getSetting('email')
+                password = kodiutils.getSetting('password')
+                if user == '' or password == '':
+                    kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32134))
+                    kodiutils.setResolvedUrl(solved=False)
+                    return
+                if not self.med.login(user, password):
+                    kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32135))
+                    kodiutils.setResolvedUrl(solved=False)
+                    return
             headers += '&Accept=*/*&Content-Type='
             props['license_type'] = 'com.widevine.alpha'
             props['stream_headers'] = headers
@@ -442,6 +478,7 @@ class KodiMediaset(object):
 
         headers = {'user-agent': self.ua,
                    't-apigw': self.med.apigw, 't-cts': self.med.cts}
+        kodiutils.log("riproduci_video properties: %s" % properties)
         kodiutils.setResolvedUrl(data['url'], headers=headers, ins=is_helper.inputstream_addon,
                                  insdata=props,properties=properties)
 
@@ -492,12 +529,12 @@ class KodiMediaset(object):
                     self.elenco_sezioni_list(params['brand_id'])
             if params['mode'] == "video":
                 if 'pid' in params:
-                    self.riproduci_video(params['pid'])
+                    self.riproduci_video(**self.sliceParams(params, ('guid','pid','offset')))
                 else:
-                    self.riproduci_guid(params['guid'])
+                    self.riproduci_guid(**self.sliceParams(params, ('guid','offset')))
             if params['mode'] == "live":
                 if 'id' in params:
-                    self.riproduci_video(params['id'], True)
+                    self.riproduci_video(pid=params['id'], live=True)
                 else:
                     self.canali_live_play(params['guid'])
             if params['mode'] == "tv":
