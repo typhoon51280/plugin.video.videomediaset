@@ -18,7 +18,7 @@ class KodiMediaset(object):
     def __imposta_tipo_media(self, prog):
         kodiutils.setContent(_gather_media_type(prog) + 's')
 
-    def __analizza_elenco(self, progs, setcontent=False, titlewd=False):
+    def __analizza_elenco(self, progs, setcontent=False, titlewd=False, isDeletable=False, delete_list=''):
         if not progs:
             return
         # scrobbling = kodiutils.getSettingAsNum('scrobbling')
@@ -52,7 +52,7 @@ class KodiMediaset(object):
                     #     if user and password and self.med.login(user, password):
                     #         offset = self.med.getProgress(media['guid'])
                     #         properties['ResumeTime'] = str(offset)
-                    kodiutils.addListItem(infos["title"], args, videoInfo=infos, arts=arts, isFolder=False, properties=properties)
+                    kodiutils.addListItem(infos["title"], args, videoInfo=infos, arts=arts, isFolder=False, properties=properties, isDeletable=isDeletable, delete_list=delete_list, delete_field='guid')
             elif 'tuningInstruction' in prog:
                 data = {'mode': 'live'}
                 if prog['tuningInstruction'] and not prog['mediasetstation$eventBased']:
@@ -68,14 +68,14 @@ class KodiMediaset(object):
                 kodiutils.addListItem(prog["description"],
                                       {'mode': 'programma',
                                        'sub_brand_id': prog['mediasetprogram$subBrandId']},
-                                      videoInfo=infos, arts=arts)
+                                      videoInfo=infos, arts=arts, isDeletable=isDeletable, delete_list=delete_list, delete_field='sub_brand_id')
             elif 'mediasettvseason$brandId' in prog:
                 # title = prog['title']
                 # if 'mediasettvseason$displaySeason' in prog and  'mediasetprogram$seasonTitle' in prog:
                 kodiutils.addListItem(prog["title"],
                                       {'mode': 'programma',
                                        'brand_id': prog['mediasettvseason$brandId']},
-                                      videoInfo=infos, arts=arts)
+                                      videoInfo=infos, arts=arts, isDeletable=isDeletable, delete_list=delete_list, delete_field='brand_id')
             elif 'seriesId' in prog:
                 title = prog['title']
                 seriesTitle = prog['title']
@@ -97,12 +97,12 @@ class KodiMediaset(object):
                                       {'mode': 'programma', 'series_id': prog['seriesId'],
                                        'sort': sort, 'order': order,
                                        'title': seriesTitle},
-                                      videoInfo=infos, arts=arts)
+                                      videoInfo=infos, arts=arts, isDeletable=isDeletable, delete_list=delete_list, delete_field='series_id')
             else:
                 kodiutils.addListItem(prog["title"],
                                       {'mode': 'programma',
                                        'brand_id': prog['mediasetprogram$brandId']},
-                                      videoInfo=infos, arts=arts)
+                                      videoInfo=infos, arts=arts, isDeletable=isDeletable, delete_list=delete_list, delete_field='brand_id')
 
     def root(self):
         kodiutils.addListItem('On Demand', {'mode': 'ondemand'})
@@ -150,10 +150,13 @@ class KodiMediaset(object):
             if template and (('template' in sec and not str(sec['template']) in template.split('|')) or not 'template' in sec):
                 continue
             if "uxReference" in sec:
+                kodiutils.log(('elenco_ondemand uxReference: {}').format(str(sec)), 4)
                 kodiutils.addListItem(sec["title"], {'mode': 'sezione', 'id': sec['uxReference']})
             elif "newsFeedUrl" in sec:
+                kodiutils.log(('elenco_ondemand newsFeedUrl: {}').format(str(sec)), 4)
                 kodiutils.addListItem(sec["title"], {'mode': 'magazine', 'newsFeedUrl': sec['newsFeedUrl']})
             elif "feedurl" in sec:
+                kodiutils.log(('elenco_ondemand feedurl: {}').format(str(sec)), 4)
                 kodiutils.addListItem(sec["title"], {'mode': 'cult', 'feedurl': sec['feedurl']})
         # kodiutils.addListItem('Ordina {}'.format('DESC' if sort and order == 'asc' else 'ASC'), {
         #     'mode': 'ondemand',
@@ -189,7 +192,8 @@ class KodiMediaset(object):
         self.__analizza_elenco(els)
         kodiutils.endScript()
 
-    def elenco_sezione(self, id, page=1, sort=None, order='asc'):
+    def elenco_sezione(self, id, page=1, sort='mediasetprogram$seasonTitle', order='asc'):
+        kodiutils.log("[main] elenco_sezione: id{},page={},sort={},order={}".format(str(id),str(page),str(sort),str(order)))
         els, hasmore = self.med.OttieniProgrammiGenere(id, self.iperpage, page, sort, order)
         kodiutils.log('elenco_sezione {} {}: {}'.format(str(self.iperpage), str(hasmore), str(els)), 4)
         if els:
@@ -204,6 +208,7 @@ class KodiMediaset(object):
         kodiutils.endScript()
 
     def elenco_stagioni_list(self, series_id, title, sort=None, order='asc'):
+        kodiutils.log("[main] elenco_stagioni_list: series_id={},title={},sort={},order={}".format(str(series_id),str(title),str(sort),str(order)))
         els, _ = self.med.OttieniStagioni(series_id, sort, order)
         if len(els) == 1:
             self.elenco_sezioni_list(els[0]['mediasettvseason$brandId'])
@@ -226,8 +231,16 @@ class KodiMediaset(object):
                     kodiutils.addListItem('Tutte le Stagioni', {'mode': 'programma', 'series_id': series_id, 'title': '*'})
                 self.elenco_sezioni_list(brandId)
 
-    def elenco_sezioni_list(self, brandId):
-        els, _ = self.med.OttieniSezioniProgramma(brandId, sort='mediasetprogram$order|asc')
+    def elenco_sezioni_list(self, brandId, sort='mediasetprogram$order|asc'):
+        kodiutils.log("[main] elenco_sezioni_list: brandId={},sort={}".format(str(brandId),str(sort)))
+        # sortMethod = kodiutils.getSettingAsNum('sort')
+        # order = 'desc' if kodiutils.getSettingAsNum('order') else 'asc'
+        # sortBy = 'mediasetprogram$order|asc'
+        # if sortMethod == 1:
+        #     sortBy = 'title|{}'.format(order)
+        # elif sortMethod == 2:
+        #     sortBy = 'mediasetprogram$publishInfo_lastPublished|{}'.format(order)
+        els, _ = self.med.OttieniSezioniProgramma(brandId, sort=sort)
         if len(els) == 2:
             self.elenco_video_list(els[1]['mediasetprogram$subBrandId'])
         else:
@@ -235,11 +248,18 @@ class KodiMediaset(object):
             self.__analizza_elenco(els)
         kodiutils.endScript()
 
-    def elenco_video_list(self, sub_brand_id, mode='programma', sort='desc', page=0, size=0):
+    def elenco_video_list(self, sub_brand_id, mode='programma', sort='', page=0, size=0):
+        kodiutils.log("[main] elenco_video_list: sub_brand_id={},mode={},sort={},page={},size={}".format(str(sub_brand_id),str(mode),str(sort),str(page),str(size)))
+        # sortMethod = kodiutils.getSettingAsNum('sort')
+        # order = 'desc' if kodiutils.getSettingAsNum('order') else 'asc'
+        # sortBy = ''
+        # if sortMethod == 1:
+        #     sortBy = 'title|{}'.format(order)
+        # elif sortMethod == 2:
+        #     sortBy = 'mediasetprogram$publishInfo_lastPublished|{}'.format(order)
         if not size:
             size = self.iperpage
-        els, hasMore = self.med.OttieniVideoSezione(
-            sub_brand_id, sort='mediasetprogram$publishInfo_lastPublished|{}'.format(sort), page=page, size=size)
+        els, hasMore = self.med.OttieniVideoSezione(sub_brand_id, sort=sort, page=page, size=size)
         self.__analizza_elenco(els, True)
         if hasMore:
             kodiutils.addListItem(kodiutils.LANGUAGE(32130), {'mode': mode, 'sub_brand_id': sub_brand_id, 'sort': sort, 'page': int(page)+1, 'size': size})
@@ -266,26 +286,52 @@ class KodiMediaset(object):
     def continuewatch(self):
         user = kodiutils.getSetting('email')
         password = kodiutils.getSetting('password')
-        if len(user) > 0 and len(password) > 0 and self.med.login(user, password):
+        if user > 0 and password and self.med.login(user, password):
             els, _ = self.med.OttieniContinuaGardare()
-            self.__analizza_elenco(els)
+            self.__analizza_elenco(els, isDeletable=True, delete_list='continuewatch') 
         kodiutils.endScript()
 
     def favorites(self):
         user = kodiutils.getSetting('email')
         password = kodiutils.getSetting('password')
-        if len(user) > 0 and len(password) > 0 and self.med.login(user, password):
+        if user and password and self.med.login(user, password):
             els, _ = self.med.OttieniFavoriti()
-            self.__analizza_elenco(els)
+            self.__analizza_elenco(els, isDeletable=True, delete_list='favorites')
         kodiutils.endScript()
+
+    def favoritesAdd(self, brand_id='', series_id=''):
+        user = kodiutils.getSetting('email')
+        password = kodiutils.getSetting('password')
+        if user and password and self.med.login(user, password):
+            if self.med.AggiungiFavoriti(brand_id=brand_id, series_id=series_id):
+                kodiutils.notify('Aggiunto a Preferiti (MediasetPlay)', 0)
+        kodiutils.endScript(closedir=False)
 
     def watchlist(self):
         user = kodiutils.getSetting('email')
         password = kodiutils.getSetting('password')
-        if len(user) > 0 and len(password) > 0 and self.med.login(user, password):
+        if user and password and self.med.login(user, password):
             els, _ = self.med.OttieniWatchlist()
-            self.__analizza_elenco(els)
+            self.__analizza_elenco(els, isDeletable=True, delete_list='watchlist')
         kodiutils.endScript()
+
+    def watchlistAdd(self, guid=''):
+        user = kodiutils.getSetting('email')
+        password = kodiutils.getSetting('password')
+        if user and password and self.med.login(user, password):
+            if self.med.AggiungiWatchlist(guid):
+                kodiutils.log('Aggiunto a Guarda Dopo (MediasetPlay)', 0)
+        kodiutils.endScript(closedir=False)
+
+    def deleteList(self, delete_list='', delete_id=''):
+        user = kodiutils.getSetting('email')
+        password = kodiutils.getSetting('password')
+        if user and password and self.med.login(user, password):
+            if self.med.EliminaLista(delete_list, delete_id):
+                kodiutils.log('Rimosso da Lista (MediasetPlay)', 0)
+            else:
+                kodiutils.log('Errore Rimosso da Lista (MediasetPlay)', 1)
+        kodiutils.endScript(closedir=False)
 
     def tv_root(self):
         kodiutils.addListItem(kodiutils.LANGUAGE(32111), {'mode': 'canali_live'})
@@ -488,6 +534,7 @@ class KodiMediaset(object):
     def main(self):
         # parameter values
         params = staticutils.getParams()
+        kodiutils.log("[main] params: {}".format(str(params)))
         if 'mode' in params:
             page = None
             if 'page' in params:
@@ -545,11 +592,20 @@ class KodiMediaset(object):
                 self.continuewatch()
             elif params['mode'] == "favorites":
                 self.favorites()
+            elif params['mode'] == "favoritesadd":
+                if 'brand_id' in params:
+                    self.favoritesAdd(brand_id=params['brand_id'])
+                elif 'series_id' in params:
+                    self.favoritesAdd(series_id=params['series_id'])
             elif params['mode'] == "watchlist":
                 self.watchlist()
-            if params['mode'] == "canali_live":
+            elif params['mode'] == "watchlistadd":
+                self.watchlistAdd(params['guid'])
+            elif params['mode'] == "delete":
+                self.deleteList(params['delete_list'], params['delete_id'])
+            elif params['mode'] == "canali_live":
                 self.canali_live_root()
-            if params['mode'] == "guida_tv":
+            elif params['mode'] == "guida_tv":
                 if 'id' in params:
                     if 'week' in params:
                         self.guida_tv_canale_settimana(params['id'], int(params['week']))

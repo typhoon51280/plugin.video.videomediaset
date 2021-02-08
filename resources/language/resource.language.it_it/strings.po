@@ -62,10 +62,6 @@ msgctxt "#32011"
 msgid "Scrobbling Mediaset Interval"
 msgstr "Scrobbling Mediaset Interval"
 
-msgctxt "#32012"
-msgid "Riprendi automatico"
-msgstr "Riprendi automatico"
-
 msgctxt "#32101"
 msgid "Tutto A-Z"
 msgstr "Tutto A-Z"

@@ -8,5 +8,4 @@
         <setting label="32006" type="action" action="RunScript(script.module.inputstreamhelper,widevine_install)" visible="!system.platform.android"/>
         <setting label="32007" type="select" id="scrobbling" lvalues="32008|32009" default="CUSTOM"/>
         <setting label="32011" type="number" id="scrobblingInterval" default="1"/>
-        <!-- <setting label="32013" type="bool" id="resumeauto" default="true"/> -->
 </settings>

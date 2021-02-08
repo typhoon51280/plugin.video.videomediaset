@@ -424,9 +424,42 @@ class Mediaset(rutils.RUtils):
         url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/favorites/v1.0")
         return self.__getElsFromUrl(url)
 
+    def AggiungiFavoriti(self, brand_id=''):
+        if brand_id:
+            url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/favorites/v1.0")
+            data = {
+                "contentId": str(brand_id)
+            }
+            result = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
+            self.log('AggiungiFavoriti result: %s' % result.json(), 4)
+            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+        return False
+
+    def EliminaLista(self, delete_list='', delete_id=''):
+        if delete_list and delete_id:
+            url = self.__createMediasetUrl("https://api.cloud.mediaset.net/api/ssr/userlist/{}/59ad346f1de1c4000dfd09c5".format(str(delete_list)))
+            data = {
+                "id": [str(delete_id)]
+            }
+            result = self.SESSION.delete(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
+            self.log('EliminaFavoriti result: %s' % result.json(), 4)
+            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+        return False
+
     def OttieniWatchlist(self):
         url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/watchlist/v1.0")
         return self.__getElsFromUrl(url)
+
+    def AggiungiWatchlist(self, guid=''):
+        if guid:
+            url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/watchlist/v1.0")
+            data = {
+                "contentId": str(guid)
+            }
+            result = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
+            self.log('AggiungiWatchlist result: %s' % result.json(), 4)
+            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+        return False
 
     def getProgress(self, guid=''):
         url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/continuewatch/progress/v1.0", args={"contentId": guid})
@@ -447,11 +480,10 @@ class Mediaset(rutils.RUtils):
                 "streamDuration": int(duration)
             }
             self.log('setProgress: url={}, data={}'.format(str(url),str(data)))
-            # self.setHeader('Content-Type', 'application/json')
-            # self.setHeader('Cache-Control', 'no-cache')
             result = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
-            self.log('setProgress result FULL: %s' % result, 4)
-            self.log('setProgress result TEXT: %s' % result.text, 4)
+            # self.log('setProgress result: %s' % result.json(), 4)
+            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+        return False
 
     # def OttieniGeneriFiction(self):
     #     self.log('Trying to get the fiction sections list', 4)
