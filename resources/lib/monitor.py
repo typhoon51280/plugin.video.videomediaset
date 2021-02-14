@@ -1,5 +1,5 @@
-# import xbmc
-from kodi_six import xbmc # pyright: reportMissingImports=false
+import xbmc
+# from kodi_six import xbmc # pyright: reportMissingImports=false
 import json
 import time
 import math
@@ -12,11 +12,14 @@ class MediasetService:
     dispatchQueue = sqlitequeue.SqliteQueue()
 
     _actionMap = {
-        'start': 'scrobble',
+        'onAVStarted': 'check',
+        'start': 'check',
+        'offset': 'check',
+        'pause': 'check',
+        'resume': 'check',
+        'seek': 'check',
         'end': 'scrobble',
-        'pause': 'scrobble',
         'stop': 'scrobble',
-        'seek': 'scrobble',
         'scrobble': 'scrobble'
     }
 
@@ -43,20 +46,33 @@ class MediasetService:
         try:
             # kodiutils.log("[mediasetservice] Dispatch: %s" % data)
             actionName = data['action']
-            guid = data['guid'] if 'guid' in data else 0
-            position = data['position'] if 'position' in data else 0
-            duration = data['duration'] if 'duration' in data else 0
-            self._action(actionName, guid=guid, position=position, duration=duration)
+            if actionName in self._actionMap:
+                method_name = self._actionMap[actionName]
+                if hasattr(self, method_name):
+                    method = getattr(self, method_name)
+                    method(**data)
         except Exception as ex:
             kodiutils.log(kodiutils.createError(ex), 1)
 
-    def scrobble(self, guid=0, position=0, duration=0):
-        kodiutils.log("[mediasetservice] scrobble: guid={}, position={}, duration={} ".format(str(guid),str(position),str(duration)))
+    def scrobble(self, **data):
+        guid = data['guid'] if 'guid' in data else ''
+        position = data['position'] if 'position' in data else 0
+        duration = data['duration'] if 'duration' in data else 0
+        kodiutils.log("[mediasetservice] scrobble: action={}, guid={}, position={}, duration={}".format(data['action'],guid,position,duration))
         if position and guid and duration:
             user = kodiutils.getSetting('email')
             password = kodiutils.getSetting('password')
             if user and password and self.med.login(user, password):
                 self.med.setProgress(guid, position, duration)
+
+    def check(self, **data):
+        guid = data['guid'] if 'guid' in data else None
+        path = data['path'] if 'path' in data else None
+        offset = data['offset'] if 'offset' in data else None
+        kodiutils.log("[mediasetservice] check: action={}, guid={}, offset={}, path={}".format(data['action'],guid,offset,path))
+        if guid and path:
+            self.player._clear(guid=guid, filename=path, offset=offset, playing=True)
+        self.player._transitionCheck()
 
     def run(self):
         # startup_delay = kodiutils.getSettingAsNum('startup_delay')
@@ -67,9 +83,8 @@ class MediasetService:
         kodiutils.log("mediasetservice started", 1)
 
         # setup event driven classes
-        self.cache = {}
-        self.player = Player(cache=self.cache, action=self._dispatchQueue)
-        self.monitor = Monitor(cache=self.cache, action=self._dispatchQueue)
+        self.player = Player(action=self._dispatchQueue)
+        self.monitor = Monitor(action=self._dispatchQueue)
 
         # start loop for events
         while not self.monitor.abortRequested():
@@ -90,95 +105,111 @@ class MediasetService:
         # delete player/monitor
         del self.player
         del self.monitor
-        del self.cache
-
-
 class Monitor(xbmc.Monitor):
     def __init__(self, *args, **kwargs):
         kodiutils.log("[mediasetservice] monitor initialiazed")
-        self.cache = kwargs['cache'] if 'cache' in kwargs else {}
+        self.action = kwargs['action']
     
     def onNotification(self, sender, method, data):
         if sender != kodiutils.ID:
             return
         kodiutils.log("[mediasetservice] onNotification {}, {}".format(sender,method))
-        if method and data and len(data)>0:
+        if method and data:
             action = method.split('.')[-1]
-            self.cache['{}.{}'.format(sender,action)] = json.loads(data)
+            data = json.loads(data)
+            data['action'] = action
+            self.action(data)
          
 class Player(xbmc.Player):
 
     def __init__(self, *args, **kwargs):
-        self.cache = kwargs['cache'] if 'cache' in kwargs else {}
         self.action = kwargs['action']
         self._scrobbling = kodiutils.getSettingAsNum("scrobbling")
         self._clear()
         kodiutils.log("[mediasetservice] player initialiazed")
 
-    def _clear(self):
-        self._playing = False
-        self._guid = ''
+    def _clear(self, guid='', filename='', offset='', playing=False):
+        self._guid = guid
+        self._filename = filename
+        self._offset = offset
+        self._playing = playing
         self._position = 0
         self._duration = 0
 
     def isScrobbling(self):
         return self._scrobbling and self._guid and self._playing
 
+    def __calculateSeconds(self, data):
+        if data:
+            hours = int(data['hours']) if 'hours' in data else 0
+            minutes = int(data['minutes']) if 'minutes' in data else 0
+            seconds = int(data['seconds']) if 'seconds' in data else 0
+            return 3600*hours + 60*minutes + seconds
+        return 0
+
     def __getTime(self):
-        activePlayers = kodiutils.kodiJsonRequest({"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1})
-        playerId = int(activePlayers[0]['playerid']) if activePlayers else 0
-        if playerId:
-            result = kodiutils.kodiJsonRequest({'jsonrpc': '2.0', 'method': 'Player.GetProperties', 'params': {'playerid': playerId, "properties": ["time"]}, 'id': 1})
-            # kodiutils.log("[mediasetservice] __getTime: {}".format(str(result)), 4)
-            timeData = result['time'] if 'time' in result else None
-            if timeData:
-                hours = int(timeData['hours']) if 'hours' in timeData else 0
-                minutes = int(timeData['minutes']) if 'minutes' in timeData else 0
-                seconds = int(timeData['seconds']) if 'seconds' in timeData else 0
-                return 3600*hours + 60*minutes + seconds
-        return self._position
+        try:
+            activePlayers = kodiutils.kodiJsonRequest({"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1})
+            playerId = int(activePlayers[0]['playerid']) if activePlayers else 0
+            if playerId:
+                result = kodiutils.kodiJsonRequest({'jsonrpc': '2.0', 'method': 'Player.GetProperties', 'params': {'playerid': playerId, "properties": ["time","totaltime"]}, 'id': 1})
+                timeData = result['time'] if 'time' in result else None
+                totalTime = result['totaltime'] if 'totaltime' in result else None
+                return self.__calculateSeconds(timeData), self.__calculateSeconds(totalTime)
+        except Exception as ex:
+            kodiutils.log(kodiutils.createError(ex), 1)
+        return self._position, self._duration
+
+    def __checkTime(self):
+        position, duration = self.__getTime()
+        if position:
+            self._position = position
+        if duration:
+            self._duration = duration
+
+    def __trySeek(self):
+        if self._offset:
+            offset = float(self._offset)
+            if offset and offset>self._position:
+                try:
+                    self.seekTime(offset)
+                except Exception as ex:
+                    kodiutils.log(kodiutils.createError(ex), 1)
+                position, _ = self.__getTime()
+                if position < offset:
+                    data = {'action': 'offset'}
+                    self.action(data)
+                else:
+                    self._offset = ''
 
     def _transitionCheck(self):
-        if self.isScrobbling() and self.isPlayingVideo():
-            self._position =  self.__getTime()
+        try:
+            if self.isScrobbling() and self.isPlayingVideo():
+                if self._filename == self.getPlayingFile():
+                    self.__checkTime()
+                    # kodiutils.log("[mediasetservice] transitionCheck: guid={}, position={}, duration={}, offset={}".format(self._guid,self._position,self._duration,self._offset), 4)
+                    self.__trySeek()
+
+        except Exception as ex:
+            kodiutils.log(kodiutils.createError(ex), 1)
 
     # called when kodi starts playing a file
     def onAVStarted(self):
         if self.isPlayingVideo():
-            try:
-                self._clear()
-                item = self.cache.pop('{}.{}'.format(kodiutils.ID,'onAVStarted'), '')
-                if item:
-                    filename = self.getPlayingFile()
-                    path = str(item['path'])
-                    if path == filename:
-                        self._playing = True
-                        self._guid = item['guid'] if 'guid' in item else ''
-                        self._duration = math.floor(self.getTotalTime())
-                        self._position = self.__getTime()
-                        offset = float(item['offset']) if 'offset' in item else 0.0
-                        kodiutils.log("[mediasetservice] onAVStarted: guid={}, position={}, duration={}, offset={}".format(str(self._guid),str(self._position),str(self._duration),str(offset)), 4)
-                        if offset and offset>self._position:
-                            self.seekTime(offset)
-                        # else:
-                        #     data = {'action': 'start', 'guid': self._guid, 'position': self._position, 'duration': self._duration}
-                        #     self.action(data)
-                        
-            except Exception as ex:
-                kodiutils.log(kodiutils.createError(ex), 1)
+            self.__checkTime()
+            data = {'action': 'start'}
+            self.action(data)
     
     # called when kodi stops playing a file
     def onPlayBackEnded(self):
         if self.isScrobbling():
-            # kodiutils.log("[mediasetservice] onPlayBackEnded")
-            data = {'action': 'end', 'guid': self._guid, 'position': int(self._duration), 'duration': self._duration}
+            data = {'action': 'end', 'guid': self._guid, 'position': self._duration, 'duration': self._duration}
             self.action(data)
             self._clear()
 
     # called when user stops kodi playing a file
     def onPlayBackStopped(self):
         if self.isScrobbling():
-            kodiutils.log("[mediasetservice] onPlayBackStopped")
             data = {'action': 'stop', 'guid': self._guid, 'position': self._position, 'duration': self._duration}
             self.action(data)
             self._clear()
@@ -186,25 +217,26 @@ class Player(xbmc.Player):
     # called when user pauses a playing file
     def onPlayBackPaused(self):
         if self.isScrobbling():
-            kodiutils.log("[mediasetservice] onPlayBackPaused")
-            self._position = self.__getTime()
+            self.__checkTime()
+            data = {'action': 'pause', 'guid': self._guid, 'position': self._position, 'duration': self._duration}
+            self.action(data)
 
     # called when user resumes a paused file
-    # def onPlayBackResumed(self):
-        kodiutils.log("[mediasetservice] onPlayBackResumed")
-        # time = self.__getTime()
-        # data = {'action': 'resumed', 'time': time}
-        # self.action(data)
+    def onPlayBackResumed(self):
+        if self.isScrobbling():
+            self.__checkTime()
+            data = {'action': 'resume', 'guid': self._guid, 'position': self._position, 'duration': self._duration}
+            self.action(data)
 
     # called when user seeks to a time
     def onPlayBackSeek(self, time, offset):
         if self.isScrobbling():
-            kodiutils.log("[mediasetservice] onPlayBackSeek")
-            self._position = math.floor(time/1000)
+            self.__checkTime()
+            data = {'action': 'seek', 'guid': self._guid, 'position': self._position, 'duration': self._duration}
+            self.action(data)
 
     # called when user performs a chapter seek
     # def onPlayBackSeekChapter(self, chapter):
-    #     kodiutils.log("[mediasetservice] onPlayBackSeekChapter")
         # data = {'action': 'seekchapter', 'chapter': chapter}
         # self.action(data)
     
