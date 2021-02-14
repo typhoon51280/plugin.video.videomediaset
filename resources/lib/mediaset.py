@@ -1,4 +1,5 @@
 import time
+import uuid
 import xml.etree.ElementTree as ET
 from phate89lib import kodiutils, rutils, staticutils  # pyright: reportMissingImports=false
 try:
@@ -21,6 +22,7 @@ class Mediaset(rutils.RUtils):
         self.cts = ''
         self.__tracecid = ''
         self.__cwid = ''
+        self.__deviceid = str(uuid.uuid4())
         self.expires_at = 0.0
         self.anonymousLogin()
         self.uxReferenceMapping = {
@@ -234,14 +236,23 @@ class Mediaset(rutils.RUtils):
         result = None
         hasMore = False
         data = self.getJson(url)
+        kodiutils.log('__getElsFromUrl: {}'.format(str(data)), 4)
         if data and 'isOk' in data and data['isOk']:
             if 'response' in data:
                 response = data['response']
+                metadata = response['metadata'] if 'metadata' in response else {}
+                if 'error' in metadata and metadata['error']:
+                    kodiutils.log('Error: {}'.format(str(metadata['error'])), 1)
+                    kodiutils.notify('Timeout caricamento dati', icon=kodiutils.getMedia('notify.png'))
+                    return [], None
                 if 'hasMore' in response:
                     hasMore = response['hasMore']
-                elif 'metadata' in response and 'pagination' in response['metadata']:
-                    pagination = response['metadata']['pagination']
-                    hasMore = pagination['totalHits'] == pagination['hitsPerPage'] if 'hitsPerPage' in pagination else False
+                elif 'pagination' in metadata:
+                    pagination = metadata['pagination']
+                    hitsPerPage = int(pagination['hitsPerPage']) if 'hitsPerPage' in pagination else 0
+                    totalHits = int(pagination['totalHits']) if 'totalHits' in pagination else 0
+                    if totalHits and totalHits == hitsPerPage:
+                        hasMore = totalHits
                 if 'entries' in response:
                     result = response['entries']
                 else:
@@ -359,18 +370,27 @@ class Mediaset(rutils.RUtils):
             return sorted(data, key=lambda k: k[sort] if sort in k else None, reverse=(not order == 'asc'))
         return data
 
-    def OttieniMagazine(self, newsFeedUrl):
+    def OttieniMagazine(self, newsFeedUrl, iperpage=None):
         self.log('Trying to get the list of articles for magazine section: ' + newsFeedUrl, 4)
+        if iperpage:
+            if '?' in newsFeedUrl:
+                newsFeedUrl = '{}&size={}'.format(newsFeedUrl,iperpage)
+            else:
+                newsFeedUrl = '{}?size={}'.format(newsFeedUrl,iperpage)
         jsn = self.getJson(newsFeedUrl)
         nextPage = False
+        prevPage = False
         els = []
         if 'data' in jsn:
             data = jsn['data']
             if 'items' in data:
                 els = data['items']
-        if 'resultInfo' in jsn and 'paging' in jsn['resultInfo'] and 'next' in jsn['resultInfo']['paging']:
-            nextPage = jsn['resultInfo']['paging']['next']
-        return els, nextPage
+        if 'resultInfo' in jsn and 'paging' in jsn['resultInfo']:
+            resultInfo = jsn['resultInfo']
+            paging = resultInfo['paging'] if 'paging' in resultInfo else {}
+            nextPage = paging['next'] if 'next' in paging else None
+            prevPage = paging['previus'] if 'previus' in paging else None
+        return els, nextPage, prevPage
 
     def OttieniNews(self, ddg_url):
         self.log('Trying to get info from ddg_url ' + ddg_url, 4)
@@ -385,22 +405,35 @@ class Mediaset(rutils.RUtils):
                         els.append(el)
         return els
 
-    def OttieniCult(self, feedurl):
+    def OttieniCult(self, feedurl, iperpage=None):
+        if iperpage and not 'range' in feedurl:
+            if '?' in feedurl:
+                feedurl = '{}&range={}-{}'.format(feedurl,1,iperpage)
+            else:
+                feedurl = '{}?range={}-{}'.format(feedurl,1,iperpage)
         self.log('Trying to get the list of articles for cult section: ' + feedurl, 4)
         jsn = self.getJson(feedurl)
+        self.log('Trying to get the list of articles for cult section: %s' % jsn, 4)
         nextPage = False
+        prevPage = False
         els = []
         if 'entries' in jsn:
             els = jsn['entries']
             if els and 'itemsPerPage' in jsn and 'entryCount' in jsn and jsn['itemsPerPage'] == jsn['entryCount']:
                 url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs'
-                startIndex = int(jsn['startIndex']) + int(jsn['itemsPerPage'])
-                endIndex = int(jsn['startIndex']) + int(jsn['itemsPerPage']) + int(jsn['itemsPerPage']) - 1
+                itemsPerPage = int(jsn['itemsPerPage'])
+                startIndex = int(jsn['startIndex'])
+                nextStartIndex = startIndex + itemsPerPage
+                nextEndIndex = nextStartIndex + itemsPerPage - 1
                 brandId = els[0]['mediasetprogram$brandId']
                 subBrandId = els[0]['mediasetprogram$subBrandId']
-                args = {'byCustomValue': '{{brandId}}{{{brandId}}},{{subBrandId}}{{{subBrandId}}}'.format(brandId=brandId,subBrandId=subBrandId), 'range': '{}-{}'.format(startIndex, endIndex)}
-                nextPage = self.__create_url(url, args)
-        return els, nextPage
+                byCustomValue = '{{brandId}}{{{brandId}}},{{subBrandId}}{{{subBrandId}}}'.format(brandId=brandId,subBrandId=subBrandId)
+                nextPage = self.__create_url(url, {'byCustomValue': byCustomValue, 'range': '{}-{}'.format(nextStartIndex, nextEndIndex)})
+                if startIndex>itemsPerPage:
+                    prevStartIndex = startIndex - itemsPerPage
+                    prevEndIndex = startIndex - 1
+                    prevPage = self.__create_url(url, {'byCustomValue': byCustomValue, 'range': '{}-{}'.format(prevStartIndex, prevEndIndex)})
+        return els, nextPage, prevPage
 
     # def OttieniGeneri(self, section):
     #     self.log('Trying to get the sections list for ' + section, 4)
@@ -424,42 +457,9 @@ class Mediaset(rutils.RUtils):
         url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/favorites/v1.0")
         return self.__getElsFromUrl(url)
 
-    def AggiungiFavoriti(self, brand_id=''):
-        if brand_id:
-            url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/favorites/v1.0")
-            data = {
-                "contentId": str(brand_id)
-            }
-            result = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
-            self.log('AggiungiFavoriti result: %s' % result.json(), 4)
-            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
-        return False
-
-    def EliminaLista(self, delete_list='', delete_id=''):
-        if delete_list and delete_id:
-            url = self.__createMediasetUrl("https://api.cloud.mediaset.net/api/ssr/userlist/{}/59ad346f1de1c4000dfd09c5".format(str(delete_list)))
-            data = {
-                "id": [str(delete_id)]
-            }
-            result = self.SESSION.delete(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
-            self.log('EliminaFavoriti result: %s' % result.json(), 4)
-            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
-        return False
-
     def OttieniWatchlist(self):
         url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/watchlist/v1.0")
         return self.__getElsFromUrl(url)
-
-    def AggiungiWatchlist(self, guid=''):
-        if guid:
-            url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/watchlist/v1.0")
-            data = {
-                "contentId": str(guid)
-            }
-            result = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
-            self.log('AggiungiWatchlist result: %s' % result.json(), 4)
-            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
-        return False
 
     def getProgress(self, guid=''):
         url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/continuewatch/progress/v1.0", args={"contentId": guid})
@@ -482,9 +482,33 @@ class Mediaset(rutils.RUtils):
             self.log('setProgress: url={}, data={}'.format(str(url),str(data)))
             result = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
             # self.log('setProgress result: %s' % result.json(), 4)
-            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+            return 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
         return False
 
+    def AggiungiLista(self, lista='', item_id=''):
+        if lista and item_id:
+            url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/{}/v1.0".format(lista))
+            data = {
+                "contentId": str(item_id)
+            }
+            response = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
+            result = response.json()
+            self.log('AggiungiLista result: %s' % result, 4)
+            return 'isOk' in result and result['isOk']
+
+    def EliminaLista(self, delete_list='', delete_id=''):
+        if delete_list and delete_id:
+            url = self.__createMediasetUrl("https://api.cloud.mediaset.net/api/ssr/userlist/{}/59ad346f1de1c4000dfd09c5".format(str(delete_list)))
+            data = {
+                "id": [str(delete_id)]
+            }
+            res = self.SESSION.delete(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
+            jsn = res.json()
+            self.log('EliminaLista result: %s' % jsn, 4)
+            result = jsn[0] if jsn and len(jsn)>0 else {}
+            return 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+        return False
+        
     # def OttieniGeneriFiction(self):
     #     self.log('Trying to get the fiction sections list', 4)
     #     return self.__getsectionsFromEntryID("5acfcb3c23eec6000d64a6a4")
@@ -516,13 +540,14 @@ class Mediaset(rutils.RUtils):
     #     self.log('Trying to get the movie sections list', 4)
     #     return self.__getsectionsFromEntryID("5bfd17c423eec6001aec49f9")
 
-    def OttieniProgrammiGenere(self, gid, pageels=100, page=None, sort=None, order='asc'):
+    def OttieniProgrammiGenere(self, gid, pageels=20, page=None, sort=None, order='asc'):
         self.log('Trying to get the programs from section id ' + gid, 4)
         url = self.__createMediasetUrl(
             "https://api-ott-prod-fe.mediaset.net/PROD/play/rec2/cataloguelisting/v1.0",
-            pageels=pageels, page=page, args={'platform': 'pc', 'uxReference': self.uxReferenceMapping[gid]})
+            pageels=20, page=page, args={'platform': 'pc', 'uxReference': self.uxReferenceMapping[gid], 'deviceId': self.__deviceid})
         data, hasMore = self.__getElsFromUrl(url)
-        if sort and not hasMore:
+        self.log('OttieniProgrammiGenere: %s' % data, 4)
+        if sort and data and not hasMore:
             return sorted(data, key=lambda k: k[sort] if sort in k else None, reverse=(not order == 'asc')), hasMore
         return data, hasMore
 
@@ -542,12 +567,11 @@ class Mediaset(rutils.RUtils):
             args['sort'] = sort
         return self.__getEntriesFromUrl(url, args)
 
-    def OttieniVideoSezione(self, subBrandId, sort=None, page=0, size=50):
+    def OttieniVideoSezione(self, subBrandId, sort=None, page=1, size=50):
         self.log('Trying to get the videos from section {}'.format(subBrandId), 4)
         url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs'
-        offset = int(page) * int(size)
-        startIndex = offset + 1
-        endIndex = offset + int(size)
+        startIndex = (page-1) * size + 1
+        endIndex = page * size
         args = {'byCustomValue': '{{subBrandId}}{{{subBrandId}}}'.format(subBrandId=subBrandId), 'range': '{}-{}'.format(startIndex, endIndex)}
         if sort:
             args['sort'] = sort
