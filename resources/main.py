@@ -42,7 +42,7 @@ class KodiMediaset(object):
         return art
 
     def __getDirectoryArt(self):
-        return self.__geItemtArt("notify.png", "icon.png")
+        return self.__geItemtArt("notify.png")
 
     def __getForwardArt(self):
         return self.__geItemtArt("forward.png")

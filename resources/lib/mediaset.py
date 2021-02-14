@@ -421,18 +421,19 @@ class Mediaset(rutils.RUtils):
             els = jsn['entries']
             if els and 'itemsPerPage' in jsn and 'entryCount' in jsn and jsn['itemsPerPage'] == jsn['entryCount']:
                 url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs'
-                itemsPerPage = int(jsn['itemsPerPage'])
-                startIndex = int(jsn['startIndex'])
-                nextStartIndex = startIndex + itemsPerPage
-                nextEndIndex = nextStartIndex + itemsPerPage - 1
-                brandId = els[0]['mediasetprogram$brandId']
-                subBrandId = els[0]['mediasetprogram$subBrandId']
-                byCustomValue = '{{brandId}}{{{brandId}}},{{subBrandId}}{{{subBrandId}}}'.format(brandId=brandId,subBrandId=subBrandId)
-                nextPage = self.__create_url(url, {'byCustomValue': byCustomValue, 'range': '{}-{}'.format(nextStartIndex, nextEndIndex)})
-                if startIndex>itemsPerPage:
-                    prevStartIndex = startIndex - itemsPerPage
-                    prevEndIndex = startIndex - 1
-                    prevPage = self.__create_url(url, {'byCustomValue': byCustomValue, 'range': '{}-{}'.format(prevStartIndex, prevEndIndex)})
+                brandId = els[0]['mediasetprogram$brandId'] if 'mediasetprogram$brandId' in els[0] else ''
+                subBrandId = els[0]['mediasetprogram$subBrandId'] if 'mediasetprogram$subBrandId' in els[0] else ''
+                if brandId and subBrandId:
+                    byCustomValue = '{{brandId}}{{{brandId}}},{{subBrandId}}{{{subBrandId}}}'.format(brandId=brandId,subBrandId=subBrandId)
+                    itemsPerPage = int(jsn['itemsPerPage'])
+                    startIndex = int(jsn['startIndex'])
+                    nextStartIndex = startIndex + itemsPerPage
+                    nextEndIndex = nextStartIndex + itemsPerPage - 1
+                    nextPage = self.__create_url(url, {'byCustomValue': byCustomValue, 'range': '{}-{}'.format(nextStartIndex, nextEndIndex)})
+                    if startIndex>itemsPerPage:
+                        prevStartIndex = startIndex - itemsPerPage
+                        prevEndIndex = startIndex - 1
+                        prevPage = self.__create_url(url, {'byCustomValue': byCustomValue, 'range': '{}-{}'.format(prevStartIndex, prevEndIndex)})
         return els, nextPage, prevPage
 
     # def OttieniGeneri(self, section):
