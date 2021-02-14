@@ -431,11 +431,12 @@ class KodiMediaset(object):
 
     def guida_tv_canale_giorno(self, cid, dt):
         res = self.med.OttieniGuidaTV(cid, dt, dt + 86399999)  # 86399999 is one day minus 1 ms
+        kodiutils.setContent('videos')
         if 'listings' in res:
             for el in res['listings']:
+                program = el['program'] if 'program' in el else {}
                 if (kodiutils.getSettingAsBool('fullguide') or
-                        ('mediasetprogram$hasVod' in el['program'] and
-                         el['program']['mediasetprogram$hasVod'])):
+                        ('mediasetprogram$hasVod' in program and program['mediasetprogram$hasVod'])):
                     infos = _gather_info(el)
                     arts = _gather_art(el)
                     s_time = staticutils.get_date_from_timestamp(
@@ -445,8 +446,8 @@ class KodiMediaset(object):
                     s = "{s}-{e} - {t}".format(s=s_time, e=e_time,
                                                t=el['mediasetlisting$epgTitle'].encode('utf8'))
                     kodiutils.addListItem(s,
-                                          {'mode': 'video', 'guid': el['program']['guid']},
-                                          videoInfo=infos, arts=arts, isFolder=False)
+                                          {'mode': 'video', 'guid': program['guid']},
+                                          videoInfo=infos, arts=arts, properties={'ResumeTime': '0.0', 'TotalTime': '0.0', 'playcount': '0'}, isFolder=False)
         kodiutils.endScript()
 
     def canali_live_root(self):
@@ -482,7 +483,7 @@ class KodiMediaset(object):
                     vid = self.__ottieni_vid_restart(prog['callSign'])
                     if vid:
                         kodiutils.addListItem(chn['title'], {'mode': 'video', 'pid': vid},
-                                              videoInfo=chn['infos'], arts=chn['arts'],
+                                              videoInfo=chn['infos'], arts=chn['arts'], properties={'ResumeTime': '0.0'},
                                               isFolder=False)
                         continue
                 data = {'mode': 'live'}
@@ -523,13 +524,13 @@ class KodiMediaset(object):
                 else:
                     data['mid'] = v['releasePids'][0]
             kodiutils.addListItem(kodiutils.LANGUAGE(32137) + title, data, videoInfo=infos,
-                                  arts=arts, isFolder=False)
+                                  arts=arts, properties={'ResumeTime': '0.0'}, isFolder=False)
         if ('currentListing' in res[0] and
                 res[0]['currentListing']['mediasetlisting$restartAllowed']):
             url = res[0]['currentListing']['restartUrl']
             vid = url.rpartition('/')[-1]
             kodiutils.addListItem(kodiutils.LANGUAGE(32138) + title, {'mode': 'video', 'pid': vid},
-                                  videoInfo=infos, arts=arts, isFolder=False)
+                                  videoInfo=infos, arts=arts, properties={'ResumeTime': '0.0'}, isFolder=False)
         kodiutils.endScript()
 
     def riproduci_guid(self, guid='', offset=None):

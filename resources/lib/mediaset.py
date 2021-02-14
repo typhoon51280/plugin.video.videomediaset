@@ -597,9 +597,9 @@ class Mediaset(rutils.RUtils):
                   'starting {} finishing {}').format(chid, str(start), str(finish)), 4)
         args = {'byCallSign': chid, 'byListingTime': '{s}~{f}'.format(s=str(start), f=str(finish))}
         url = self.__createMediasetUrl(
-            "https://api-ott-prod-fe.mediaset.net/PROD/play/alive/allListingFeedEpg/v1.0?",
-            pageels=None, page=None, args=args)
-        res = self.__getElsFromUrl(url)
+            "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-listings?",
+            pageels=None, page=None, args=args, passkeys=False)
+        res = self.__getEntriesFromUrl(url)
         if res is not None:
             if res and res[0]:
                 return res[0][0]
