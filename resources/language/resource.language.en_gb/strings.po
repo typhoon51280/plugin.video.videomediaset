@@ -62,6 +62,14 @@ msgctxt "#32011"
 msgid "Scrobbling Mediaset Interval"
 msgstr "Scrobbling Mediaset Interval"
 
+msgctxt "#32012"
+msgid "Individua Tipo Media"
+msgstr "Individua Tipo Media"
+
+msgctxt "#32013"
+msgid "Cerca Trama Completa"
+msgstr "Cerca Trama Completa"
+
 msgctxt "#32101"
 msgid "Tutto A-Z"
 msgstr "All A-Z"
@@ -126,8 +134,12 @@ msgctxt "#32122"
 msgid "In Onda"
 msgstr "On Air"
 
+msgctxt "#32129"
+msgid "Precedente Pagina"
+msgstr "Prev Page"
+
 msgctxt "#32130"
-msgid "Prossima pagina"
+msgid "Prossima Pagina"
 msgstr "Next Page"
 
 msgctxt "#32131"
