@@ -180,10 +180,11 @@ class KodiMediaset(object):
         kodiutils.endScript()
 
     def elenco_cerca_root(self):
-        kodiutils.addListItem(kodiutils.LANGUAGE(32115), {'mode': 'cerca', 'type': 'programmi'})
-        kodiutils.addListItem(kodiutils.LANGUAGE(32116), {'mode': 'cerca', 'type': 'clip'})
-        kodiutils.addListItem(kodiutils.LANGUAGE(32117), {'mode': 'cerca', 'type': 'episodi'})
-        kodiutils.addListItem(kodiutils.LANGUAGE(32103), {'mode': 'cerca', 'type': 'film'})
+        arts = self.__getDirectoryArt()
+        kodiutils.addListItem(kodiutils.LANGUAGE(32115), {'mode': 'cerca', 'type': 'programmi'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32116), {'mode': 'cerca', 'type': 'clip'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32117), {'mode': 'cerca', 'type': 'episodi'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32103), {'mode': 'cerca', 'type': 'film'}, arts=arts)
         kodiutils.endScript()
 
     def apri_ricerca(self, sez):
@@ -234,8 +235,9 @@ class KodiMediaset(object):
         kodiutils.endScript(closedir=True)
 
     def elenco_cult_root(self):
-        kodiutils.addListItem('Home',{'mode': 'ondemand', 'id': '5dada71d23eec6001ba1a83b', 'template': 'video-mixed|playlist', 'sort': 'title'})
-        kodiutils.addListItem('Tutti i Video', {'mode': 'ondemand', 'id': '5c0ff291a0e845001bb455bf', 'template': 'video-mixed|playlist', 'sort': 'title'})
+        arts = self.__getDirectoryArt()
+        kodiutils.addListItem('Home',{'mode': 'ondemand', 'id': '5dada71d23eec6001ba1a83b', 'template': 'video-mixed|playlist', 'sort': 'title'}, arts=arts)
+        kodiutils.addListItem('Tutti i Video', {'mode': 'ondemand', 'id': '5c0ff291a0e845001bb455bf', 'template': 'video-mixed|playlist', 'sort': 'title'}, arts=arts)
         kodiutils.endScript()
 
     def elenco_cult(self, feedurl, page_action=""):
@@ -395,8 +397,9 @@ class KodiMediaset(object):
         kodiutils.endScript(closedir=False, update_dir=update_dir)
 
     def tv_root(self):
-        kodiutils.addListItem(kodiutils.LANGUAGE(32111), {'mode': 'canali_live'})
-        kodiutils.addListItem(kodiutils.LANGUAGE(32113), {'mode': 'guida_tv'})
+        arts = self.__getDirectoryArt()
+        kodiutils.addListItem(kodiutils.LANGUAGE(32111), {'mode': 'canali_live'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32113), {'mode': 'guida_tv'}, arts=arts)
         kodiutils.endScript()
     
     def guida_tv_root(self):
