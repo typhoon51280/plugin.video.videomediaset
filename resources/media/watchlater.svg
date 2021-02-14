@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" role="presentation" viewBox="0 0 24 24">
+	<g fill-rule="evenodd">
+		<path fill="none" d="M0 0h24v24H0z"/>
+		<path fill="none" stroke="#9D4DE1" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 19.232L12 16l-5 3.232V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12.232z"/>
+	</g>
+</svg>
