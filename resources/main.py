@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta
-import re
 from resources.lib.mediaset import Mediaset
 from resources.mediaset_datahelper import _gather_info, _gather_art, _gather_media_type
 from phate89lib import kodiutils, staticutils  # pylint: disable=import-error
@@ -451,7 +450,7 @@ class KodiMediaset(object):
                                                t=el['mediasetlisting$epgTitle'].encode('utf8'))
                     kodiutils.addListItem(s,
                                           {'mode': 'video', 'guid': program['guid']},
-                                          videoInfo=infos, arts=arts, properties={'ResumeTime': '0.0', 'TotalTime': '0.0', 'playcount': '0'}, isFolder=False)
+                                          videoInfo=infos, arts=arts, properties={'ResumeTime': '0.0', 'TotalTime': '0.0', 'StartOffset': '0.0'}, isFolder=False)
         kodiutils.endScript()
 
     def canali_live_root(self):
@@ -538,6 +537,7 @@ class KodiMediaset(object):
         kodiutils.endScript()
 
     def riproduci_guid(self, guid='', offset=None):
+        kodiutils.log('riproduci_guid: guid={}, offset={}'.format(guid,offset))
         res = self.med.OttieniInfoDaGuid(guid)
         if not res or 'media' not in res:
             kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32136))
@@ -547,8 +547,10 @@ class KodiMediaset(object):
 
     def riproduci_video(self, guid=None, pid=None, live=False, offset=None):
         from inputstreamhelper import Helper  # pylint: disable=import-error
-        kodiutils.log("Trying to get the video from pid %s" % pid)
+        # kodiutils.log("Trying to get the video from pid %s" % pid)
+        kodiutils.log('riproduci_video: guid={}, pid={}, live={}, offset={}'.format(guid,pid,live,offset))
         data = self.med.OttieniDatiVideo(pid, live)
+        kodiutils.log('riproduci_video: data={}'.format(str(data)))
         if data['type'] == 'video/mp4':
             kodiutils.setResolvedUrl(data['url'])
             return
@@ -560,7 +562,7 @@ class KodiMediaset(object):
         headers = '&User-Agent={useragent}'.format(
             useragent=self.ua)
         props = {'manifest_type': 'mpd', 'stream_headers': headers}
-        properties = {}
+        properties = {'ResumeTime': '0.0'}
         isAutenticated = False
         scrobbling = kodiutils.getSettingAsNum('scrobbling')
         if scrobbling and not self.isAnonimous:
@@ -574,6 +576,8 @@ class KodiMediaset(object):
                     isAutenticated = self.med.login(user, password)
                     if isAutenticated:
                         offset = self.med.getProgress(guid)
+                        if offset:
+                            properties['offset'] = str(offset)
 
         if data['security']:
             if not isAutenticated:

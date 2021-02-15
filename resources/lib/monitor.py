@@ -58,21 +58,25 @@ class MediasetService:
         guid = data['guid'] if 'guid' in data else ''
         position = data['position'] if 'position' in data else 0
         duration = data['duration'] if 'duration' in data else 0
-        kodiutils.log("[mediasetservice] scrobble: action={}, guid={}, position={}, duration={}".format(data['action'],guid,position,duration))
+        action = data['action'] if 'action' in data else ''
+        kodiutils.log("[mediasetservice] scrobble: action={}, guid={}, position={}, duration={}".format(action,guid,position,duration))
         if position and guid and duration:
             user = kodiutils.getSetting('email')
             password = kodiutils.getSetting('password')
             if user and password and self.med.login(user, password):
                 self.med.setProgress(guid, position, duration)
+        # if action=='stop' or action=='end': # TBC Matrix
+        #     self.player.resetResume()
 
     def check(self, **data):
         guid = data['guid'] if 'guid' in data else None
+        url = data['url'] if 'url' in data else None
         path = data['path'] if 'path' in data else None
         offset = data['offset'] if 'offset' in data else None
-        kodiutils.log("[mediasetservice] check: action={}, guid={}, offset={}, path={}".format(data['action'],guid,offset,path))
-        if guid and path:
-            self.player._clear(guid=guid, filename=path, offset=offset, playing=True)
-        self.player._transitionCheck()
+        kodiutils.log("[mediasetservice] check: action={}, guid={}, offset={}, url={}, path={}".format(data['action'],guid,offset,url,path))
+        if guid and url and path:
+            self.player._clear(guid=guid, filename_url=url, filename_path=path, offset=offset, playing=True)
+        self.player.transitionCheck()
 
     def run(self):
         # startup_delay = kodiutils.getSettingAsNum('startup_delay')
@@ -97,7 +101,7 @@ class MediasetService:
                 # Abort was requested while waiting. We should exit
                 break
             else:
-                self.player._transitionCheck()
+                self.player.transitionCheck()
 
         # we are shutting down
         kodiutils.log("[mediasetservice] monitorService shut down.", 1)
@@ -128,9 +132,10 @@ class Player(xbmc.Player):
         self._clear()
         kodiutils.log("[mediasetservice] player initialiazed")
 
-    def _clear(self, guid='', filename='', offset='', playing=False):
+    def _clear(self, guid='', filename_url='', filename_path='', offset='', playing=False):
         self._guid = guid
-        self._filename = filename
+        self._filenameUrl = filename_url
+        self._filenamePath = filename_path
         self._offset = offset
         self._playing = playing
         self._position = 0
@@ -181,15 +186,17 @@ class Player(xbmc.Player):
                     self.action(data)
                 else:
                     self._offset = ''
+                
+    def resetResume(self):
+        kodiutils.kodiJsonRequest({"jsonrpc": "2.0", "method": "Files.SetFileDetails", "params": {"file": self._filenameUrl, "resume": {"position": 0}}, "id": 1})
 
-    def _transitionCheck(self):
+    def transitionCheck(self):
         try:
             if self.isScrobbling() and self.isPlayingVideo():
-                if self._filename == self.getPlayingFile():
+                if self._filenamePath == self.getPlayingFile():
                     self.__checkTime()
                     # kodiutils.log("[mediasetservice] transitionCheck: guid={}, position={}, duration={}, offset={}".format(self._guid,self._position,self._duration,self._offset), 4)
                     self.__trySeek()
-
         except Exception as ex:
             kodiutils.log(kodiutils.createError(ex), 1)
 

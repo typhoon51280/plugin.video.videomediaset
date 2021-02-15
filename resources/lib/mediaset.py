@@ -468,7 +468,7 @@ class Mediaset(rutils.RUtils):
         if res and 'response' in res:
             response = res['response']
             if 'position' in response and response['position']:
-                return response['position']
+                return int(response['position'])
         return 0
 
     def setProgress(self, guid=None, position=0, duration=0):
