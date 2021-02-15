@@ -56,6 +56,9 @@ class KodiMediaset(object):
     def __getWatchlaterArt(self):
         return self.__geItemtArt("watchlater.png")
 
+    def __getContinueArt(self):
+        return self.__geItemtArt("continue.png")
+
     def checkCredentials(self):
         user = kodiutils.getSetting('email')
         password = kodiutils.getSetting('password')
@@ -252,6 +255,7 @@ class KodiMediaset(object):
         kodiutils.endScript(update_listing=update_listing)
 
     def elenco_magazine(self, newsFeedUrl, page_action=""):
+        arts = self.__getDirectoryArt()
         els, nextPage, prevPage = self.med.OttieniMagazine(newsFeedUrl, self.iperpage)
         update_listing = (page_action=='next' or page_action=='prev')
         if nextPage:
@@ -260,7 +264,7 @@ class KodiMediaset(object):
             kodiutils.addListItem(kodiutils.LANGUAGE(32129), {'mode': 'magazine', 'newsFeedUrl': prevPage, 'page_action': 'prev'}, properties={'SpecialSort': 'top'}, arts=self.__getBackwardArt())
         for sec in els:
             if 'metainfo' in sec and 'ddg_url' in sec['metainfo']:
-                kodiutils.addListItem(sec["title"], {'mode': 'magazine', 'ddg_url': sec['metainfo']['ddg_url']})
+                kodiutils.addListItem(sec["title"], {'mode': 'magazine', 'ddg_url': sec['metainfo']['ddg_url']}, arts=arts)
         kodiutils.log(('update_listing: {}').format(str(update_listing)), 4)
         kodiutils.endScript(update_listing=update_listing)
 
@@ -347,7 +351,7 @@ class KodiMediaset(object):
         if self.isAnonimous:
             self.root()
         else:
-            kodiutils.addListItem('Continua a Guardare', {'mode': 'continuewatch'}, arts=self.__getDirectoryArt())
+            kodiutils.addListItem('Continua a Guardare', {'mode': 'continuewatch'}, arts=self.__getContinueArt())
             kodiutils.addListItem('Preferiti', {'mode': 'favorites'}, arts=self.__getFavouriteArt())
             kodiutils.addListItem('Guarda Dopo', {'mode': 'watchlist'}, arts=self.__getWatchlaterArt())
         kodiutils.endScript()
