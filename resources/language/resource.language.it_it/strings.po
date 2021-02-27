@@ -70,6 +70,14 @@ msgctxt "#32013"
 msgid "Cerca Trama Completa"
 msgstr "Cerca Trama Completa"
 
+msgctxt "#32014"
+msgid "Cache"
+msgstr "Cache"
+
+msgctxt "#32015"
+msgid "Cache Memory"
+msgstr "Cache Memory"
+
 msgctxt "#32101"
 msgid "Tutto A-Z"
 msgstr "Tutto A-Z"

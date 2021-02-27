@@ -272,10 +272,10 @@ class KodiMediaset(object):
         self.__analizza_elenco(els, True)
         kodiutils.endScript()
 
-    def elenco_sezione(self, id, page=0, sort='mediasetprogram$seasonTitle', order='asc'):
-        kodiutils.log("[main] elenco_sezione: id{},page={},sort={},order={}".format(str(id),str(page),str(sort),str(order)))
-        els, hasmore = self.med.OttieniProgrammiGenere(id, self.iperpage, page, sort, order)
-        kodiutils.log('elenco_sezione {} {}: {}'.format(str(self.iperpage), str(hasmore), str(els)), 4)
+    def elenco_sezione(self, id, page=0, sort='mediasetprogram$seasonTitle', order='asc', size=20):
+        kodiutils.log("[main] elenco_sezione: id={},page={},sort={},order={}".format(str(id),str(page),str(sort),str(order)))
+        els, hasmore = self.med.OttieniProgrammiGenere(id, size, page, sort, order)
+        kodiutils.log('elenco_sezione size={},hasmore={}: {}'.format(str(size), str(hasmore), str(els)), 4)
         update_listing = (page > 0)
         page = int(page) if page else 1
         if els:

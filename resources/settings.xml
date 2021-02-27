@@ -10,4 +10,6 @@
         <setting label="32011" type="number" id="scrobblingInterval" default="1"/>
         <setting label="32012" type="bool" id="detectmediatype" default="true"/>
         <setting label="32013" type="bool" id="lookupfullplot" default="true"/>
+        <setting label="32014" type="bool" id="cache" default="true"/>
+        <setting label="32015" type="bool" id="cachememory" default="false"/>
 </settings>
