@@ -6,7 +6,7 @@
         <setting label="32004" type="bool" id="fullguide" default="false"/>
         <setting label="32005" type="bool" id="splitlive" default="false"/>
         <setting label="32006" type="action" action="RunScript(script.module.inputstreamhelper,widevine_install)" visible="!system.platform.android"/>
-        <setting label="32007" type="select" id="scrobbling" lvalues="32008|32009" default="32009"/>
+        <setting label="32007" type="select" id="scrobbling" lvalues="32009|32008" />
         <setting label="32011" type="number" id="scrobblingInterval" default="1"/>
         <setting label="32012" type="bool" id="detectmediatype" default="true"/>
         <setting label="32013" type="bool" id="lookupfullplot" default="true"/>
