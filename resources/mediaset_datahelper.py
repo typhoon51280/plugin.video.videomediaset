@@ -16,7 +16,7 @@ def __normalize(value):
     if isinstance(value, dict):
         return dict(map(lambda x: (x[0], __normalize(x[1])), value.items()))
     elif isinstance(value, list):
-        return map(lambda x: utils.py2_encode(x), value)
+        return list(map(lambda x: utils.py2_encode(x), value))
     else:
         return utils.py2_encode(value)
 
