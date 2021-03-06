@@ -276,7 +276,7 @@ class KodiMediaset(object):
         kodiutils.log("[main] elenco_sezione: id={},page={},sort={},order={}".format(str(id),str(page),str(sort),str(order)))
         els, hasmore = self.med.OttieniProgrammiGenere(id, size, page, sort, order)
         kodiutils.log('elenco_sezione size={},hasmore={}: {}'.format(str(size), str(hasmore), str(els)), 4)
-        update_listing = (page > 0)
+        update_listing = int(page) > 0 if page else False
         page = int(page) if page else 1
         if els:
             if hasmore:
@@ -358,7 +358,7 @@ class KodiMediaset(object):
     def continuewatch(self):
         user = kodiutils.getSetting('email')
         password = kodiutils.getSetting('password')
-        if user > 0 and password and self.med.login(user, password):
+        if user and password and self.med.login(user, password):
             els, _ = self.med.OttieniContinuaGardare()
             self.__analizza_elenco(els) 
         kodiutils.endScript()
@@ -617,7 +617,7 @@ class KodiMediaset(object):
                     page = int(params['page'])
                 except ValueError:
                     pass
-            self.iperpage = min(kodiutils.getSetting('itemsperpage'), 10)
+            self.iperpage = min(kodiutils.getSettingAsNum('itemsperpage'), 10)
             if params['mode'] == "cerca":
                 if 'type' in params:
                     if 'search' in params:
