@@ -117,7 +117,7 @@ class KodiMediaset(object):
                 args['mode'] = 'programma'
                 args['sub_brand_id'] = prog['mediasetprogram$subBrandId']
                 menuItems = self.menuItems(isDeletable=isDeletable, delete_list=delete_list, item_id=item_id, guid=guid, context_ui=context_ui)
-                kodiutils.addListItem(prog["description"], args, videoInfo=infos, arts=arts, menuItems=menuItems)
+                kodiutils.addListItem(infos["title"], args, videoInfo=infos, arts=arts, menuItems=menuItems)
             elif 'mediasettvseason$brandId' in prog:
                 kodiutils.log('__analizza_elenco brandId: {}'.format(str(prog)), 4)
                 # title = prog['title']
@@ -463,10 +463,9 @@ class KodiMediaset(object):
                 for prog in chan['listings']:
                     if prog['startTime'] <= now <= prog['endTime']:
                         guid = chan['guid']
-                        chans[guid] = {'title': '{} - {}'.format(chan['title'],
-                                                                 kodiutils.py2_encode(
-                                                                     prog["mediasetlisting$epgTitle"])),
-                                       'infos': _gather_info(prog),
+                        title = '{} - {}'.format(chan['title'],kodiutils.py2_encode(prog["mediasetlisting$epgTitle"]))
+                        chans[guid] = {'title': title,
+                                       'infos': _gather_info(prog, infos={'title': title}),
                                        'arts': _gather_art(prog),
                                        'restartAllowed': prog['mediasetlisting$restartAllowed']}
         kodiutils.log(('chans: {}').format(str(chans)))
@@ -475,7 +474,7 @@ class KodiMediaset(object):
             if (prog['callSign'] in chans and 'tuningInstruction' in prog and
                     prog['tuningInstruction'] and (not prog['mediasetstation$eventBased'] or prog['mediasetstation$channelPool'])):
                 chn = chans[prog['callSign']]
-                if chn['arts'] == {}:
+                if not chn['arts']:
                     chn['arts'] = _gather_art(prog)
                 if chn['restartAllowed']:
                     if kodiutils.getSettingAsBool('splitlive'):
