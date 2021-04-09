@@ -68,7 +68,9 @@ def _gather_info(prog, titlewd=False, mediatype=None, infos=None, lookup_fullplo
             infos['mediatype'] = _gather_media_type(prog)
 
     if 'title' not in infos:
-        if 'title' in prog:
+        if 'mediasetprogram$subBrandId' in prog and 'description' in prog and prog["description"] and 'media' not in prog:
+            infos['title'] = prog["description"]
+        elif 'title' in prog:
             infos['title'] = prog["title"]
         elif 'mediasetprogram$brandTitle' in prog:
             infos['title'] = prog["mediasetprogram$brandTitle"]
