@@ -352,7 +352,8 @@ class Mediaset(rutils.RUtils):
             page_priority = {'programmitv': '0001', 'family': '0002',  'fiction': '0003', 'film': '0004',  'kids': '0005', 'documentari': '0006'}
             filtered = []
             for el in data:
-                if 'page_section' in el and str(el['name'].lower()).startswith('[pro]'):
+                name = str(el['name'].lower()) if 'name' in el else ''
+                if 'pageUri' in el and 'page_section' in el and (name.startswith('[pro]') or name.startswith('[mpi]')):
                     key_pr = str(el['page_section'])
                     if key_pr in page_priority:
                         el['priority'] = page_priority[key_pr]
@@ -592,7 +593,7 @@ class Mediaset(rutils.RUtils):
         if not live:
             u += 'media/'
         u += pid + ('?auto=true&balance=true&format=smil&formats=MPEG-DASH,MPEG4,M3U&tracking=true'
-                    '&assetTypes=HD,browser,widevine:HD,browser:SD,browser,widevine:SD,browser:SD')
+                    '&assetTypes=HD,browser,widevine,geoIT|geoNo:HD,browser,geoIT|geoNo:HD,geoIT|geoNo:SD,browser,widevine,geoIT|geoNo:SD,browser,geoIT|geoNo:SD,geoIT|geoNo')
         text = self.getText(u)
         res = {'url': '', 'pid': '', 'type': '', 'security': False}
         root = ET.fromstring(text)
