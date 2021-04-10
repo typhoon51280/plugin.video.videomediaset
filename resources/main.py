@@ -471,8 +471,9 @@ class KodiMediaset(object):
         kodiutils.log(('chans: {}').format(str(chans)))
         els, _ = self.med.OttieniCanaliLive(sort='ShortTitle')
         for prog in els:
-            if (prog['callSign'] in chans and 'tuningInstruction' in prog and
-                    prog['tuningInstruction'] and (not prog['mediasetstation$eventBased'] or prog['mediasetstation$channelPool'])):
+            if ('callSign' in prog and prog['callSign'] in chans and 'tuningInstruction' in prog and prog['tuningInstruction'] and (
+                not ('mediasetstation$eventBased' in prog and prog['mediasetstation$eventBased']) or 
+                ('mediasetstation$channelPool' in prog and prog['mediasetstation$channelPool']))):
                 chn = chans[prog['callSign']]
                 if not chn['arts']:
                     chn['arts'] = _gather_art(prog)
@@ -513,10 +514,13 @@ class KodiMediaset(object):
         arts = {}
         title = ''
         if 'currentListing' in res[0]:
-            self.__imposta_tipo_media(res[0]['currentListing']['program'])
-            infos = _gather_info(res[0]['currentListing'])
-            arts = _gather_art(res[0]['currentListing']['program'])
-            title = ' - ' + infos['title']
+            listing = res[0]['currentListing']
+            program = listing['program'] if 'program' in listing else {}
+            self.__imposta_tipo_media(program)
+            infos = _gather_info(listing)
+            arts = _gather_art(program)
+            title = program['title'] if 'title' in program else infos['title']
+            title = kodiutils.py2_decode(title)
         if 'tuningInstruction' in res[0]:
             data = {'mode': 'live'}
             vdata = res[0]['tuningInstruction']['urn:theplatform:tv:location:any']
@@ -525,13 +529,15 @@ class KodiMediaset(object):
                     data['id'] = v['releasePids'][0]
                 else:
                     data['mid'] = v['releasePids'][0]
-            kodiutils.addListItem(kodiutils.LANGUAGE(32137) + title, data, videoInfo=infos,
+            infos['title'] = kodiutils.LANGUAGE(32137) + ' - ' + title
+            kodiutils.addListItem(infos['title'], data, videoInfo=infos,
                                   arts=arts, properties={'ResumeTime': '0.0'}, isFolder=False)
         if ('currentListing' in res[0] and
                 res[0]['currentListing']['mediasetlisting$restartAllowed']):
             url = res[0]['currentListing']['restartUrl']
             vid = url.rpartition('/')[-1]
-            kodiutils.addListItem(kodiutils.LANGUAGE(32138) + title, {'mode': 'video', 'pid': vid},
+            infos['title'] = kodiutils.LANGUAGE(32138) + ' - ' + title
+            kodiutils.addListItem(infos['title'], {'mode': 'video', 'pid': vid},
                                   videoInfo=infos, arts=arts, properties={'ResumeTime': '0.0'}, isFolder=False)
         kodiutils.endScript()
 
