@@ -469,11 +469,9 @@ class KodiMediaset(object):
                                        'arts': _gather_art(prog),
                                        'restartAllowed': prog['mediasetlisting$restartAllowed']}
         kodiutils.log(('chans: {}').format(str(chans)))
-        els, _ = self.med.OttieniCanaliLive(sort='ShortTitle')
+        els, _ = self.med.OttieniCanaliLive(sort='shortTitle|asc')
         for prog in els:
-            if ('callSign' in prog and prog['callSign'] in chans and 'tuningInstruction' in prog and prog['tuningInstruction'] and (
-                not ('mediasetstation$eventBased' in prog and prog['mediasetstation$eventBased']) or 
-                ('mediasetstation$channelPool' in prog and prog['mediasetstation$channelPool']))):
+            if ('callSign' in prog and prog['callSign'] in chans and 'tuningInstruction' in prog and prog['tuningInstruction']):
                 chn = chans[prog['callSign']]
                 if not chn['arts']:
                     chn['arts'] = _gather_art(prog)

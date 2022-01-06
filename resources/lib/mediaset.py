@@ -536,7 +536,7 @@ class Mediaset(rutils.RUtils):
 
     def OttieniCanaliLive(self, sort=None):
         self.log('Trying to get the live channels list', 4)
-        url = ('https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-stations?')
+        url = ('https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-stations-v2?')
         if sort:
             return self.__getEntriesFromUrl(url, {'sort': sort})
         return self.__getEntriesFromUrl(url)
