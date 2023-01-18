@@ -61,9 +61,7 @@ class MediasetService:
         action = data['action'] if 'action' in data else ''
         kodiutils.log("[mediasetservice] scrobble: action={}, guid={}, position={}, duration={}".format(action,guid,position,duration))
         if position and guid and duration:
-            user = kodiutils.getSetting('email')
-            password = kodiutils.getSetting('password')
-            if user and password and self.med.login(user, password):
+            if self.med.isAuthenticated():
                 self.med.setProgress(guid, position, duration)
         # if action=='stop' or action=='end': # TBC Matrix
         #     self.player.resetResume()

@@ -1,6 +1,7 @@
 import time
 import uuid
 import xml.etree.ElementTree as ET
+# from datetime import datetime, timedelta
 from phate89lib import kodiutils, rutils, staticutils  # pyright: reportMissingImports=false
 try:
     from urllib.parse import urlencode, quote
@@ -11,10 +12,14 @@ except ImportError:
 class Mediaset(rutils.RUtils):
 
     USERAGENT = "VideoMediaset Kodi Addon"
+    ACCEDO_ONE_KEY = "6023de431de1c4001877be3b"
+    APP_NAME = "generic-androidtv/12/mediasetplay-ctv"
+
     # USERAGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
     #                '(KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36')
 
-    def __init__(self):
+    def __init__(self, account={}):
+        self.log = kodiutils.log
         self.__UID = ''
         self.__UIDSignature = ''
         self.__signatureTimestamp = ''
@@ -131,120 +136,293 @@ class Mediaset(rutils.RUtils):
             'stagioniVarieta': 'stagioniVarieta'
         }
         rutils.RUtils.__init__(self, enable_cache=kodiutils.getSettingAsBool('cache'), enable_mem_cache=kodiutils.getSettingAsBool('cachememory'))
-        self.anonymousLogin()
-        # user = kodiutils.getSetting('email')
-        # password = kodiutils.getSetting('password')
-        # if user and password:
-        #     self.login(user, password)
-        # else:
-        #     self.anonymousLogin()
-        # self.log = kodiutils.log
+        if not self.isAuthenticated():
+            self.anonymousLogin()
 
-    @kodiutils.cacheable(hours=4)
-    def getSessionKey(self):
-        res = self.SESSION.get(
-            "https://api.one.accedo.tv/session?appKey=59ad346f1de1c4000dfd09c5&uuid=sdd",
-            verify=True)
-        return res.json()['sessionKey']
-    
-    def __getAPISession(self):
-        self.setHeader('x-session', self.getSessionKey())
+    @kodiutils.store('account', inject=False)
+    def setAccount(self, key=None, value=None):
+        if key:
+            return {
+                key: value
+            }
+        return {}
 
-    def isSessionValid(self, now=time.time()):
-        return self.expires_at>=0.0 and now > self.expires_at
+    @kodiutils.store('account', merge=False, write=False)
+    def getAccount(self, attr=None, account={}):
+        if attr:
+            if attr in account:
+                return account[attr]
+            return None
+        return account
 
-    @kodiutils.cacheable(hours=4)
-    def getLoginData(self, usr='', pwd=''):
-        data = {
-            "loginID": usr,
-            "password": pwd,
-            "sessionExpiration": "31536000",
-            "targetEnv": "jssdk",
-            "include": "profile,data,emails,subscriptions,preferences,",
-            "includeUserInfo": "true",
-            "loginMode": "standard",
-            "lang": "it",
-            "APIKey": "3_NhZq9YZgkgeKfN08uFjs3NYGo2Txv4QQTULh0he2w337E-o0DPXzEp4aVnWIR4jg",
-            "cid": "mediaset-web-mediaset.it programmi-mediaset Default",
-            "source": "showScreenSet",
-            "sdk": "js_latest",
-            "authMode": "cookie",
-            "pageURL": "https://www.mediasetplay.mediaset.it",
-            "format": "json",
-            "utf8": "&#x2713;"}
-        res = self.createRequest(
-            "https://login.mediaset.it/accounts.login", post=data)
-        data = res.json()
-        self.log('Trying to login with user data %s' % data , 4)
-        if data:
-            jsn = data['userInfo'] if 'userInfo' in data else {}
-            sessionInfo = data['sessionInfo'] if 'sessionInfo' in data else {}
-            if 'errorCode' in jsn and jsn['errorCode'] == 0:
-                return {
-                    "UID": jsn['UID'],
-                    "UIDSignature": jsn['UIDSignature'],
-                    "signatureTimestamp": jsn['signatureTimestamp'],
-                    "expires_in": sessionInfo['expires_in']
-                }
+    def getPersonas(self, idPersona=None, excludeCurrent=False):
+        personas = self.getAccount('personas')
+        if personas:
+            if idPersona:
+                personas = list(filter(lambda x: ('type' in x and x['id'] == idPersona), personas))
+            elif excludeCurrent:
+                currentPersona = self.getCurrentPersona()
+                if currentPersona and 'id' in currentPersona:
+                    personas = list(filter(lambda x: ('type' in x and x['id'] != currentPersona['id']), personas))
+        return personas
+
+    def getCurrentPersona(self):
+        currentPersona = self.getAccount('currentPersona')
+        if currentPersona:
+            personas = self.getPersonas(currentPersona)
+            if len(personas)==1:
+                return personas[0]
         return None
 
-    def login(self, user, password):
-        self.log('Trying to login with user data', 4)
-        data = self.getLoginData(usr=user, pwd=password)
-        if not data:
-            self.log('Login with user data failed', 4)
-            return False
-        self.__UID = data['UID']
-        self.__UIDSignature = data['UIDSignature']
-        self.__signatureTimestamp = data['signatureTimestamp']
-        if data['expires_in']:
-            self.expires_at = time.time() + (float(data['expires_in']) / 1000.0)
-        return self.__getAPIKeys(True)
+    def getAuthHeaders(self, headers={}):
+        token = self.getAccount('beToken')
+        if token:
+            headers['Authorization'] = 'Bearer {}'.format(token)
+        return headers
 
-    def anonymousLogin(self):
-        return self.__getAPIKeys()
+    def isValidPin(self):
+        account = self.getAccount()
+        return account and 'action_pin' in account and account['action_pin'] and 'action_ttl' in account and staticutils.is_after_now(account['action_ttl'])
 
-    @kodiutils.cacheable(hours=1)
-    def getAPIData(self, login):
-        if login:
-            data = {"platform": "pc",
-                    "UID": self.__UID,
-                    "UIDSignature": self.__UIDSignature,
-                    "signatureTimestamp": self.__signatureTimestamp,
-                    "appName": "web/mediasetplay-web/bd16667"}
-            url = "https://api-ott-prod-fe.mediaset.net/PROD/play/idm/account/login/v1.0"
-        else:
-            data = {"cid": "dc4e7d82-89a5-4a96-acac-d3c7f2ca6d67",
-                    "platform": "pc",
-                    "appName": "web/mediasetplay-web/576ea90"}
-            url = "https://api-ott-prod-fe.mediaset.net/PROD/play/idm/anonymous/login/v1.0"
-        res = self.SESSION.post(url, json=data, verify=True)
-        jsn = res.json()
-        if 'isOk' in jsn and jsn['isOk']:
+    def isValidCaToken(self):
+        account = self.getAccount()
+        return account and 'caToken' in account and account['caToken'] and 'caToken_ttl' in account and staticutils.is_after_now(account['caToken_ttl'])
+
+    def isValidBeToken(self):
+        account = self.getAccount()
+        return account and 'beToken' in account and account['beToken'] and 'beToken_ttl' in account and staticutils.is_after_now(account['beToken_ttl'])
+
+    def isSessionValid(self):
+        account = self.getAccount()
+        return 'sessionKey' in account and 'sessionKey_ttl' in account and staticutils.is_after_now(account['sessionKey_ttl'])
+
+    def isAnonymous(self):
+        accountType = self.getAccount('accountType')
+        return accountType and accountType == 'anonymous'
+
+    def isRegistered(self):
+        accountType = self.getAccount('accountType')
+        return accountType and accountType == 'account'
+
+    def isAuthenticated(self):
+        if self.isRegistered():
+            if self.isValidBeToken():
+                return True
+            elif self.accountRefresh() and self.accountLogin():
+                return self.isValidBeToken()
+        return False
+
+    def isPaired(self):
+        if self.isValidCaToken():
+            personas = self.getPersonas()
+            return len(personas) > 0
+        return False
+
+    def registerDevice(self):
+        if not self.isValidPin():
+            self.accountSetup()
+        return self.isValidPin()
+
+    def pair(self):
+        if not self.isPaired():
+            if self.accountPair():
+                personas = self.getPersonas()
+                if personas and len(personas)==1:
+                    self.personaLogin(personas[0]['id'])
+        return self.isPaired()
+
+    @kodiutils.store(merge=False)
+    def logout(self):
+        return {}
+
+    @kodiutils.store('account')
+    def getSessionKey(self, account={}):
+        res = self.getJson(self.__create_url("https://api.one.accedo.tv/session", args={"appKey": self.ACCEDO_ONE_KEY, "uuid": str(uuid.uuid4())}))
+        if res and 'sessionKey' in res and 'expiration' in res:
             return {
-                "apigw": res.headers['t-apigw'],
-                "cts": res.headers['t-cts'],
-                "tracecid": jsn['response']['traceCid'],
-                "cwid": jsn['response']['cwId']
+                "sessionKey": res['sessionKey'],
+                "sessionKey_ttl": staticutils.get_timestamp(staticutils.get_datetime_from_string(res['expiration'][0:17] + "Z", "%Y%m%dT%H:%M:%S%z"))
+            }
+        return None
+    
+    def getSessionHeaders(self, headers={}):
+        if not self.isSessionValid():
+            self.getSessionKey()
+        if self.isSessionValid():
+            headers['x-session'] = self.getAccount('sessionKey')
+        return headers
+
+    @kodiutils.store('account', inject=False)
+    def anonymousLogin(self):
+        clientId = str(uuid.uuid4())
+        data = {
+            "client_id": clientId,
+            "appName": self.APP_NAME
+        }
+        url = "https://api-ott-prod-fe.mediaset.net/PROD/play/idm/anonymous/login/v2.0"
+        jsn = self.getJson(url, json=data)
+        if jsn and 'isOk' in jsn and jsn['isOk']:
+            return {
+                "beToken": jsn['response']['beToken'],
+                "beToken_ttl": staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=43420000)),
+                "accountType": 'anonymous',
+                "sid": jsn['response']['sid'],
+                "clientId": clientId,
+                "appName": self.APP_NAME
             }
         return None
 
-    def __getAPIKeys(self, login=False):
-        data = self.getAPIData(login)
-        if not data:
-            return False
-        self.apigw = data['apigw']
-        self.cts = data['cts']
-        self.setHeader('t-apigw', self.apigw)
-        self.setHeader('t-cts', self.cts)
-        self.__tracecid = data['tracecid']
-        self.__cwid = data['cwid']
-        self.log('Retrieved keys successfully', 4)
-        return True
+    @kodiutils.store('account')
+    def accountSetup(self, account={}):
+        self.log('accountSetup: {}'.format(account))
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/action/create/v2.0'
+        clientId = str(uuid.uuid4())
+        action_url = "https://mediasetinfinity.mediaset.it/tv"
+        action_url_full = action_url + "?pin={action_pin}"
+        data = {
+            "action_name": "LOGIN",
+            "action_url": action_url_full,
+            "action_data": {
+                "appName": self.APP_NAME,
+                "client_id": clientId,
+                "include": "personas,accountInfo,adminBeToken"
+            },
+            "action_info": {
+                "appName": self.APP_NAME
+            }
+        }
+        jsn = self.getJson(url, json=data)
+        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+            response = jsn['response']
+            response['action_url'] = action_url
+            response['action_url_full'] = action_url_full.format(action_pin=response['action_pin'])
+            return {**self.mapDevice(response), **{"appName": self.APP_NAME, "clientId": clientId}}
+        return False
 
-    def __getEntriesFromUrl(self, url, args=None):
+    @kodiutils.store('account')
+    def accountPair(self, account={}):
+        self.log('accountPair: {}'.format(account))
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/action/pair/v2.0'
+        data = {
+            "action_id": account['action_id']
+        }
+        jsn = self.getJson(url, json=data)
+        self.log('accountPair response: {}'.format(jsn))
+        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn and 'action_complete' in jsn['response']:
+            response = jsn['response']
+            if response['action_complete'] and 'action_result' in response and 'login' in response['action_result']:
+                login_data = response['action_result']['login']
+                if 'account' in login_data:
+                    login_data['caToken_ttl'] = staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=login_data['duration']))
+                    return {**self.mapDevice(), **self.mapLogin(login_data), **self.mapPersonas(login_data['account'])}
+        return False
+    
+    @kodiutils.store('account')
+    def accountRefresh(self, account={}):
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/gigya/renew/v2.0'
+        data = {
+            "client_id": account['clientId']
+        }
+        jsn = self.getJson(url, json=data, headers=self.getAuthHeaders())
+        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+            response = jsn['response']
+            return {
+                "id_token": response['gt']
+            }
+        return False
+
+    @kodiutils.store('account')
+    def accountLogin(self, account={}):
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/account/login/v2.0'
+        data = {
+            "id": account['currentPersona'],
+            "gt": account['id_token'],
+            "appName": account['appName'],
+            "client_id": account['clientId'],
+            "include": "personas,accountInfo,adminBeToken"
+        }
+        jsn = self.getJson(url, json=data)
+        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+            response = jsn['response']
+            if 'account' in response:
+                response['caToken_ttl'] = staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration']))
+                response['beToken_ttl'] = response['caToken_ttl']
+                return {**self.mapLogin(response), **self.mapPersonas(response['account'])}
+        return False
+
+    def personaList(self):
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/persona/list/v2.0'
+        jsn = self.getJson(url, headers=self.getAuthHeaders())
+        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+            response = jsn['response']
+            if 'account' in response:
+                return self.mapPersonas(response['account'])
+        return False
+
+    @kodiutils.store('account')
+    def personaLogin(self, idPersona=None, account={}):
+        self.log('personaLogin: {}'.format(account))
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/persona/login/v2.0'
+        data = {
+            "caToken": account['caToken'],
+            "id": idPersona 
+        }
+        jsn = self.getJson(url, json=data)
+        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+            response = jsn['response']
+            return {
+                'beToken': response['beToken'],
+                'beToken_ttl': staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration'])),
+                'currentPersona': idPersona,
+                'accountType': 'account',
+            }
+        return False
+
+    def userInfo(self, caToken, idPersona):
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/comm/syntheticuserinfo/v2.0'
+        jsn = self.getJson(url, headers=self.getAuthHeaders())
+        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+            return jsn['response']
+        return False
+
+    def mapDevice(self, action={}):
+        return {
+            "action_url": action['action_url'] if 'action_url' in action else None,
+            "action_url_full": action['action_url_full'] if 'action_url_full' in action else None,
+            "action_id": action['action_id'] if 'action_id' in action else None,
+            "action_pin": action['action_pin'] if 'action_pin' in action else None,
+            "action_ttl": action['action_ttl'] * 1000 if 'action_ttl' in action else None,
+            "action_qrcode": action['action_qrcode'] if 'action_qrcode' in action else None
+        }
+
+
+    def mapLogin(self, login={}):
+        return {
+            "accountType": 'account' if 'beToken' in login else None,
+            "sid": login['sid'] if 'sid' in login else None,
+            "beToken": login['beToken'] if 'beToken' in login else None,
+            "beToken_ttl": login['beToken_ttl'] if 'beToken_ttl' in login else None,
+            "caToken": login['caToken'] if 'caToken' in login else None,
+            "caToken_ttl": login['caToken_ttl'] if 'caToken_ttl' in login else None,
+
+        }
+
+    def mapPersonas(self, account={}):
+        if 'id' in account:
+            accountId = account['id']
+        if 'accountSettings' in account and 'default' in account['accountSettings']:
+            default_persona = account['accountSettings']['default']
+        if 'personas' in account:
+            personas = list(filter(lambda x: ('type' in x and x['type'] != "Family"), account['personas']))
+        return {
+            "accountId": accountId,
+            "defaultPersona": default_persona,
+            "personas": personas
+        }
+
+    def __getEntriesFromUrl(self, url, args=None, headers={}):
         hasMore = False
-        data = self.getJson(self.__create_url(url, args))
+        data = self.getJson(self.__create_url(url, args), headers=headers)
         if data:
             if 'itemsPerPage' in data and 'entryCount' in data:
                 hasMore = data['itemsPerPage'] == data['entryCount']
@@ -255,10 +433,10 @@ class Mediaset(rutils.RUtils):
                 return data['entries'], hasMore
         return data, hasMore
 
-    def __getElsFromUrl(self, url):
+    def __getElsFromUrl(self, url, headers={}):
         result = None
         hasMore = False
-        data = self.getJson(url)
+        data = self.getJson(url, headers=headers)
         kodiutils.log('__getElsFromUrl: {}'.format(str(data)), 4)
         if data and 'isOk' in data and data['isOk']:
             if 'response' in data:
@@ -270,6 +448,8 @@ class Mediaset(rutils.RUtils):
                     return [], None
                 if 'hasMore' in response:
                     hasMore = response['hasMore']
+                elif 'pagination' in response and 'hasNextPage' in response['pagination']:
+                    hasMore = response['pagination']['hasNextPage']
                 elif 'pagination' in metadata:
                     pagination = metadata['pagination']
                     hitsPerPage = int(pagination['hitsPerPage']) if 'hitsPerPage' in pagination else 0
@@ -278,6 +458,8 @@ class Mediaset(rutils.RUtils):
                         hasMore = totalHits
                 if 'entries' in response:
                     result = response['entries']
+                elif 'blocks' in response:
+                    result = response['blocks'][0]['items']
                 else:
                     result = response
             elif 'entries' in data:
@@ -285,9 +467,7 @@ class Mediaset(rutils.RUtils):
         return result, hasMore
 
     def __getsectionsFromEntryID(self, eid):
-        self.__getAPISession()
-        jsn = self.getJson(
-            "https://api.one.accedo.tv/content/entry/{eid}?locale=it".format(eid=eid))
+        jsn = self.getJson(self.__create_url("https://api.one.accedo.tv/content/entry/{eid}", args={"locale": "it"}, path={"eid": eid}), headers=self.getSessionHeaders())
         if jsn and "components" in jsn:
             entries = []
             result = []
@@ -298,10 +478,10 @@ class Mediaset(rutils.RUtils):
             for idx in range(total):
                 entries.append(components[idx])
                 if (idx+1) % 20 == 0 or idx+1==total:
-                    eid = quote(",".join(entries))
+                    eid = ",".join(entries)
                     self.log('eid: ' + str(eid), 4)
                     del entries[:]
-                    jsn = self.getJson("https://api.one.accedo.tv/content/entries?id={eid}&locale=it".format(eid=eid))
+                    jsn = self.getJson(self.__create_url("https://api.one.accedo.tv/content/entries", args={"id": eid, "locale": "it"}), headers=self.getSessionHeaders())
                     if jsn and 'entries' in jsn:
                         result.extend(jsn['entries'])
             # self.log('result: ' + str(len(result)), 4)
@@ -323,12 +503,15 @@ class Mediaset(rutils.RUtils):
             args['cwId'] = self.__cwid
         return self.__create_url(base, args)
 
-    def __create_url(self, url, args=None):
+    def __create_url(self, url, args=None, path=None):
+        self.log('args {}'.format(args), 4)
+        if path:
+            url = url.format(**path)
         if args is None:
             return url
         if url.endswith('?'):
-            return url + urlencode(args)
-        return url + '?' + urlencode(args)
+            return url + urlencode(args,safe=",")
+        return url + '?' + urlencode(args,safe=",")
 
     def __createAZUrl(self, categories=None, query=None, inonda=None, pageels=100, page=None):
         args = {"query": query if query else "*:*"}
@@ -345,8 +528,7 @@ class Mediaset(rutils.RUtils):
         self.log('Trying to get the sections list for ondemand', 4)
         url = "https://api.one.accedo.tv/content/entries"
         args = {'locale': 'it', 'offset': '0', 'size': '50', 'typeAlias': 'page-browse'}
-        self.__getAPISession()
-        data, _ = self.__getEntriesFromUrl(url, args)
+        data, _ = self.__getEntriesFromUrl(url, args, headers=self.getSessionHeaders())
         if data:
             self.log('data: {}'.format(data), 4)
             page_priority = {'programmitv': '0001', 'family': '0002',  'fiction': '0003', 'film': '0004',  'kids': '0005', 'documentari': '0006'}
@@ -420,7 +602,7 @@ class Mediaset(rutils.RUtils):
         if 'entries' in jsn:
             els = jsn['entries']
             if els and 'itemsPerPage' in jsn and 'entryCount' in jsn and jsn['itemsPerPage'] == jsn['entryCount']:
-                url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs'
+                url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs-v2'
                 brandId = els[0]['mediasetprogram$brandId'] if 'mediasetprogram$brandId' in els[0] else ''
                 subBrandId = els[0]['mediasetprogram$subBrandId'] if 'mediasetprogram$subBrandId' in els[0] else ''
                 if brandId and subBrandId:
@@ -437,20 +619,20 @@ class Mediaset(rutils.RUtils):
         return els, nextPage, prevPage
 
     def OttieniContinuaGardare(self):
-        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/continuewatch/v1.0")
-        return self.__getElsFromUrl(url)
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/bookmarks/v2.0")
+        return self.__getElsFromUrl(url, headers=self.getAuthHeaders())
 
     def OttieniFavoriti(self):
-        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/favorites/v1.0")
-        return self.__getElsFromUrl(url)
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/favouritesSeries/v2.0")
+        return self.__getElsFromUrl(url, headers=self.getAuthHeaders())
 
     def OttieniWatchlist(self):
-        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/watchlist/v1.0")
-        return self.__getElsFromUrl(url)
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/watchlist/v2.0")
+        return self.__getElsFromUrl(url, headers=self.getAuthHeaders())
 
     def getProgress(self, guid=''):
-        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/continuewatch/progress/v1.0", args={"contentId": guid})
-        res = self.getJson(url)
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/userlist/continuewatch/progress/v2.0", args={"contentId": guid})
+        res = self.getJson(url, headers=self.getAuthHeaders())
         if res and 'response' in res:
             response = res['response']
             if 'position' in response and response['position']:
@@ -496,21 +678,32 @@ class Mediaset(rutils.RUtils):
             return 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
         return False
 
-    @kodiutils.cacheable(hours=24)
-    def OttieniProgrammiGenere(self, gid, pageels=20, page=None, sort=None, order='asc'):
+    def uxMapping(self, id):
+        if id and id in self.uxReferenceMapping:
+            return self.uxReferenceMapping[id]
+        return id
+
+    # @kodiutils.cacheable(hours=24)
+    def OttieniProgrammiGenere(self, gid, pageels=20, page=None, params=None, sort=None, order='asc'):
         self.log('Trying to get the programs from section id ' + gid, 4)
-        url = self.__createMediasetUrl(
-            "https://api-ott-prod-fe.mediaset.net/PROD/play/rec2/cataloguelisting/v1.0",
-            pageels, page=page, args={'platform': 'pc', 'uxReference': self.uxReferenceMapping[gid], 'deviceId': self.__deviceid})
-        data, hasMore = self.__getElsFromUrl(url)
-        self.log('OttieniProgrammiGenere: %s' % data, 4)
+        account = self.getAccount()
+        args = {
+            'uxReference': self.uxMapping(gid),
+            'property': 'play',
+            'tenant': 'play-prod-v2',
+            'sessionId': account['sid']
+        }
+        if params:
+            args['params'] = params
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/reco/{}/v2.0".format(self.getAccount('accountType')), pageels, page = page, args=args)
+        data, hasMore = self.__getElsFromUrl(url, headers=self.getAuthHeaders())
         if sort and data and not hasMore:
-            return sorted(data, key=lambda k: k[sort] if sort in k else None, reverse=(not order == 'asc')), hasMore
+            return sorted(data, key=lambda k: k[sort] if sort in k else '', reverse=(not order == 'asc')), hasMore
         return data, hasMore
 
     def OttieniStagioni(self, seriesId, sort=None, order='asc'):
         self.log('Trying to get the seasons from series id {}'.format(seriesId), 4)
-        url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-tv-seasons/feed'
+        url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-tv-seasons-v2'
         args = {'bySeriesId': seriesId}
         if sort:
             args['sort'] = sort + '|' + order
@@ -518,7 +711,7 @@ class Mediaset(rutils.RUtils):
 
     def OttieniSezioniProgramma(self, brandId, sort=None):
         self.log('Trying to get the sections from brand id {}'.format(brandId), 4)
-        url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-brands?'
+        url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-brands'
         args = {'byCustomValue': '{{brandId}}{{{brandId}}}'.format(brandId=brandId)}
         if sort:
             args['sort'] = sort
@@ -526,7 +719,7 @@ class Mediaset(rutils.RUtils):
 
     def OttieniVideoSezione(self, subBrandId, sort=None, page=1, size=50):
         self.log('Trying to get the videos from section {}'.format(subBrandId), 4)
-        url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs'
+        url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs-v2'
         startIndex = (page-1) * size + 1
         endIndex = page * size
         args = {'byCustomValue': '{{subBrandId}}{{{subBrandId}}}'.format(subBrandId=subBrandId), 'range': '{}-{}'.format(startIndex, endIndex)}
@@ -536,7 +729,7 @@ class Mediaset(rutils.RUtils):
 
     def OttieniCanaliLive(self, sort=None):
         self.log('Trying to get the live channels list', 4)
-        url = ('https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-stations-v2?')
+        url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-stations-v2'
         if sort:
             return self.__getEntriesFromUrl(url, {'sort': sort})
         return self.__getEntriesFromUrl(url)
@@ -569,7 +762,7 @@ class Mediaset(rutils.RUtils):
         if sort:
             args['sort'] = sort
         url = self.__createMediasetUrl(
-            "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-listings?",
+            "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-listings",
             pageels=None, page=None, args=args, passkeys=False)
         return self.__getEntriesFromUrl(url)
 
@@ -580,7 +773,7 @@ class Mediaset(rutils.RUtils):
 
     def OttieniInfoDaGuid(self, guid):
         self.log('Trying to get info from guid ' + guid, 4)
-        url = ('https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs/'
+        url = ('https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs-v2/'
                'guid/-/{guid}').format(guid=guid)
         data = self.getJson(url)
         if data and 'isException' not in data:
@@ -617,6 +810,8 @@ class Mediaset(rutils.RUtils):
         return res
 
     def OttieniWidevineAuthUrl(self, uid):
+        if self.isValidBeToken():
+            self.cts = self.getAccount()['beToken']
         return (
             'https://widevine.entitlement.theplatform.eu/wv/web/ModularDrm/getRawWidevineLicense?'
             'releasePid={pid}&account=http://access.auth.theplatform.com/data/Account/'
