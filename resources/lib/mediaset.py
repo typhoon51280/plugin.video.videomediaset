@@ -231,6 +231,10 @@ class Mediaset(rutils.RUtils):
                     self.personaLogin(personas[0]['id'])
         return self.isPaired()
 
+    def unauthorized(self):
+        self.setAccount('beToken_ttl', 0)
+        kodiutils.notify('Timeout Sessione', icon=kodiutils.getMedia('notify.png'))
+
     @kodiutils.store(merge=False)
     def logout(self):
         return {}
@@ -292,7 +296,7 @@ class Mediaset(rutils.RUtils):
             }
         }
         jsn = self.getJson(url, json=data)
-        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+        if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             response = jsn['response']
             response['action_url'] = action_url
             response['action_url_full'] = action_url_full.format(action_pin=response['action_pin'])
@@ -308,7 +312,7 @@ class Mediaset(rutils.RUtils):
         }
         jsn = self.getJson(url, json=data)
         self.log('accountPair response: {}'.format(jsn))
-        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn and 'action_complete' in jsn['response']:
+        if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn and 'action_complete' in jsn['response']:
             response = jsn['response']
             if response['action_complete'] and 'action_result' in response and 'login' in response['action_result']:
                 login_data = response['action_result']['login']
@@ -324,7 +328,7 @@ class Mediaset(rutils.RUtils):
             "client_id": account['clientId']
         }
         jsn = self.getJson(url, json=data, headers=self.getAuthHeaders())
-        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+        if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             response = jsn['response']
             return {
                 "id_token": response['gt']
@@ -342,7 +346,7 @@ class Mediaset(rutils.RUtils):
             "include": "personas,accountInfo,adminBeToken"
         }
         jsn = self.getJson(url, json=data)
-        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+        if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             response = jsn['response']
             if 'account' in response:
                 response['caToken_ttl'] = staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration']))
@@ -353,7 +357,7 @@ class Mediaset(rutils.RUtils):
     def personaList(self):
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/persona/list/v2.0'
         jsn = self.getJson(url, headers=self.getAuthHeaders())
-        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+        if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             response = jsn['response']
             if 'account' in response:
                 return self.mapPersonas(response['account'])
@@ -381,7 +385,7 @@ class Mediaset(rutils.RUtils):
     def userInfo(self, caToken, idPersona):
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/comm/syntheticuserinfo/v2.0'
         jsn = self.getJson(url, headers=self.getAuthHeaders())
-        if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
+        if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             return jsn['response']
         return False
 
@@ -563,11 +567,11 @@ class Mediaset(rutils.RUtils):
         nextPage = False
         prevPage = False
         els = []
-        if 'data' in jsn:
+        if jsn and 'data' in jsn:
             data = jsn['data']
             if 'items' in data:
                 els = data['items']
-        if 'resultInfo' in jsn and 'paging' in jsn['resultInfo']:
+        if jsn and 'resultInfo' in jsn and 'paging' in jsn['resultInfo']:
             resultInfo = jsn['resultInfo']
             paging = resultInfo['paging'] if 'paging' in resultInfo else {}
             nextPage = paging['next'] if 'next' in paging else None
@@ -599,7 +603,7 @@ class Mediaset(rutils.RUtils):
         nextPage = False
         prevPage = False
         els = []
-        if 'entries' in jsn:
+        if jsn and 'entries' in jsn:
             els = jsn['entries']
             if els and 'itemsPerPage' in jsn and 'entryCount' in jsn and jsn['itemsPerPage'] == jsn['entryCount']:
                 url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-programs-v2'
@@ -651,7 +655,7 @@ class Mediaset(rutils.RUtils):
             self.log('setProgress: url={}, data={}'.format(str(url),str(data)))
             result = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
             # self.log('setProgress result: %s' % result.json(), 4)
-            return 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
         return False
 
     def AggiungiLista(self, lista='', item_id=''):
@@ -663,7 +667,7 @@ class Mediaset(rutils.RUtils):
             response = self.SESSION.post(url, json=data, headers={'Content-Type': 'application/json', 'Cache-Control': 'no-cache'})
             result = response.json()
             self.log('AggiungiLista result: %s' % result, 4)
-            return 'isOk' in result and result['isOk']
+            return result and 'isOk' in result and result['isOk']
 
     def EliminaLista(self, delete_list='', delete_id=''):
         if delete_list and delete_id:
@@ -675,7 +679,7 @@ class Mediaset(rutils.RUtils):
             jsn = res.json()
             self.log('EliminaLista result: %s' % jsn, 4)
             result = jsn[0] if jsn and len(jsn)>0 else {}
-            return 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
+            return result and 'response' in result and 'isOk' in result['response'] and result['response']['isOk']
         return False
 
     def uxMapping(self, id):
