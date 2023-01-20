@@ -1,5 +1,6 @@
 from datetime import datetime, date
 from kodi_six import utils
+from phate89lib import kodiutils
 try:
     from functools import reduce
 except:
@@ -21,10 +22,18 @@ def __normalize(value):
         return utils.py2_encode(value)
 
 def _gather_media_type(prog):
+    programType = None
     if 'programType' in prog:
-        if prog['programType'] == 'movie':
+        programType = prog['programType']
+    if 'programtype' in prog:
+        programType = prog['programtype']
+    kodiutils.log('_gather_media_type programtype {}'.format(programType))
+    if programType:
+        if programType == 'movie':
             return 'movie'
-        if prog['programType'] == 'episode':
+        if programType == 'TVSeason':
+            return 'tvshow'
+        if programType == 'episode':
             return 'episode'
     if ('mediasetprogram$brandVerticalSiteCMS' in prog and
             prog['mediasetprogram$brandVerticalSiteCMS'] == 'fiction'):
@@ -167,6 +176,8 @@ def _gather_art(prog):
     arts = {}
     if 'thumbnails' in prog:
 
+        mediaType = _gather_media_type(prog)
+
         # Thumb
         if 'image_vertical-264x396' in prog['thumbnails']:
             arts['poster'] = prog['thumbnails']['image_vertical-264x396']['url']
@@ -204,12 +215,30 @@ def _gather_art(prog):
         # Cleart
         if 'image_keyframe_poster-1200x630' in prog['thumbnails']:
             arts['clearart'] = prog['thumbnails']['image_keyframe_poster-1200x630']['url']
-        
-        # if 'programType' in prog and (prog['programType'] == 'extra' or prog['programType'] == 'episode'):
-        #     if 'image_keyframe_poster-652x367' in prog['thumbnails']:
-        #         arts['poster'] = prog['thumbnails']['image_keyframe_poster-652x367']['url']
-        #         arts['thumb'] = prog['thumbnails']['image_keyframe_poster-652x367']['url']
+
+        if mediaType:
+            icon = None
+            if mediaType == 'episode':
+                icon = __findImg(prog['thumbnails'], [
+                    'image_keyframe_poster-240x135',
+                    'image_keyframe_poster-265x148',
+                    'image_keyframe_poster-292x165',
+                    'image_keyframe_poster-360x203',
+                    'image_keyframe_poster-391x220',
+                    'image_keyframe_poster-652x367',
+                    'image_keyframe_poster-1200x630',
+                    'image_keyframe_poster-1280x720',
+                ])
+            if icon:
+                arts['thumb'] = icon
+                arts['poster'] = icon
 
     elif 'program' in prog:
         return _gather_art(prog['program'])
     return __normalize(arts)
+
+def __findImg(images, names):
+    for name in names:
+        if name in images and 'url' in images[name]:
+            return images[name]['url']
+    return None
