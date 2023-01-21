@@ -635,11 +635,11 @@ class KodiMediaset(object):
                             properties['offset'] = str(offset)
         kodiutils.log('riproduci_video: data2={}'.format(str(data)))
         if data['security']:
-            if self.med.isAnonymous():
-                kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32134))
-                kodiutils.setResolvedUrl(solved=False)
-                return
-            if not self.med.isAuthenticated():
+            # if self.med.isAnonymous():
+            #     kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32134))
+            #     kodiutils.setResolvedUrl(solved=False)
+            #     return
+            if not self.med.isValidBeToken():
                 kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32135))
                 kodiutils.setResolvedUrl(solved=False)
                 return
