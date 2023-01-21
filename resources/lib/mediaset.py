@@ -133,7 +133,8 @@ class Mediaset(rutils.RUtils):
         }
         rutils.RUtils.__init__(self, enable_cache=kodiutils.getSettingAsBool('cache'), enable_mem_cache=kodiutils.getSettingAsBool('cachememory'))
         if not self.isAuthenticated():
-            self.anonymousLogin()
+            if not(self.isAnonymous() and self.isValidBeToken()):
+                self.anonymousLogin()
 
     @kodiutils.store('account', inject=False)
     def setAccount(self, key=None, value=None):
