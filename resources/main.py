@@ -19,8 +19,8 @@ class KodiMediaset(object):
         self.lookup_fullplot = kodiutils.getSettingAsBool('lookupfullplot')
 
     def __imposta_tipo_media(self, prog):
-        kodiutils.log('__analizza_elenco mediatype: {}'.format(_gather_media_type(prog)))
         if self.detect_media_type:
+            kodiutils.log('__analizza_elenco mediatype: {}'.format(_gather_media_type(prog)))
             kodiutils.setContent(_gather_media_type(prog) + 's')
 
     def __geItemtArt(self, icon='notify.png', poster='', fanart='fanart.jpg'):

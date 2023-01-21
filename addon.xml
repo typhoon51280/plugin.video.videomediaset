@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.videomediaset" name="Mediaset Play" provider-name="phate89, aracnoz" version="2.1.0~beta18+nexus">
+<addon id="plugin.video.videomediaset" name="Mediaset Play" provider-name="phate89, aracnoz" version="2.1.0~beta19+nexus">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.phate89" version="1.3.0~beta9+nexus"/>
