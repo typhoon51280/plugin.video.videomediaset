@@ -17,8 +17,6 @@ class KodiMediaset(object):
         self.iperpage = kodiutils.getSetting('itemsperpage')
         self.detect_media_type = kodiutils.getSettingAsBool('detectmediatype')
         self.lookup_fullplot = kodiutils.getSettingAsBool('lookupfullplot')
-        self.ua = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                   '(KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36')
 
     def __imposta_tipo_media(self, prog):
         if self.detect_media_type:
@@ -620,8 +618,7 @@ class KodiMediaset(object):
             kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32133))
             kodiutils.setResolvedUrl(solved=False)
             return
-        headers = '&User-Agent={useragent}'.format(
-            useragent=self.ua)
+        headers = 'User-Agent={useragent}'.format(useragent=self.med.USERAGENT)
         props = {'manifest_type': 'mpd', 'stream_headers': headers}
         properties = {'ResumeTime': '0.0'}
         isAutenticated = False
@@ -655,8 +652,7 @@ class KodiMediaset(object):
             props['license_key'] = '{url}|{headers}|R{{SSM}}|'.format(url=url, headers=headers)
             kodiutils.log("riproduci_video license_key: %s" % props['license_key'])
 
-        headers = {'user-agent': self.ua,
-                   't-apigw': self.med.apigw, 't-cts': self.med.cts}
+        headers = {'user-agent': self.med.USERAGENT}
         kodiutils.log("riproduci_video url: %s" % data['url'])
         kodiutils.log("riproduci_video headers: %s" % headers)
         kodiutils.log("riproduci_video properties: %s" % properties)

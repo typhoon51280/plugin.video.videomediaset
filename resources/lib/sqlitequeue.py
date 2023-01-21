@@ -10,7 +10,7 @@ from time import sleep
 # import xbmc
 # import xbmcvfs
 # import xbmcaddon
-from kodi_six import xbmc, xbmcvfs, xbmcaddon # pyright: reportMissingImports=false
+from kodi_six import xbmcvfs, xbmcaddon # pyright: reportMissingImports=false
 from phate89lib import kodiutils
 
 
@@ -44,7 +44,7 @@ class SqliteQueue(object):
     _purge = 'DELETE FROM queue'
 
     def __init__(self):
-        self.path = xbmc.translatePath(__addon__.getAddonInfo("profile"))
+        self.path = xbmcvfs.translatePath(__addon__.getAddonInfo("profile"))
         if not xbmcvfs.exists(self.path):
             logger.debug("Making path structure: %s" % repr(self.path))
             xbmcvfs.mkdir(self.path)

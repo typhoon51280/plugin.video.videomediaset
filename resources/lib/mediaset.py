@@ -1,7 +1,6 @@
 import time
 import uuid
 import xml.etree.ElementTree as ET
-# from datetime import datetime, timedelta
 from phate89lib import kodiutils, rutils, staticutils  # pyright: reportMissingImports=false
 try:
     from urllib.parse import urlencode, quote
@@ -11,12 +10,9 @@ except ImportError:
 
 class Mediaset(rutils.RUtils):
 
-    USERAGENT = "VideoMediaset Kodi Addon"
+    USERAGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
     ACCEDO_ONE_KEY = "6023de431de1c4001877be3b"
     APP_NAME = "generic-androidtv/12/mediasetplay-ctv"
-
-    # USERAGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-    #                '(KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36')
 
     def __init__(self, account={}):
         self.log = kodiutils.log
