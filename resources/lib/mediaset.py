@@ -728,12 +728,20 @@ class Mediaset(rutils.RUtils):
             args['sort'] = sort
         return self.__getEntriesFromUrl(url, args)
 
-    def OttieniCanaliLive(self, sort=None):
+    def OttieniCanaliLive(self, sort=None, channelsRights=['MediasetPlay_AVOD'], channelTypes=[]):
         self.log('Trying to get the live channels list', 4)
         url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-stations-v2'
+        args = {}
+        byCustomValue = []
         if sort:
-            return self.__getEntriesFromUrl(url, {'sort': sort})
-        return self.__getEntriesFromUrl(url)
+            args['sort'] = sort
+        if channelsRights:
+            byCustomValue.append('{{channelsRights}}{{{channelsRights}}}'.format(channelsRights='|'.join(channelsRights)))
+        if channelTypes:
+            byCustomValue.append('{{mediasetstation$channelType}}{{{channelTypes}}}'.format(channelTypes='|'.join(channelTypes)))
+        if byCustomValue:
+            args['byCustomValue'] = ','.join(byCustomValue)
+        return self.__getEntriesFromUrl(url, args=args)
 
     def Cerca(self, query, section=None, pageels=100, page=None):
         args = {'query': query, 'platform': 'pc'}
@@ -767,9 +775,9 @@ class Mediaset(rutils.RUtils):
             pageels=None, page=None, args=args, passkeys=False)
         return self.__getEntriesFromUrl(url)
 
-    def OttieniCanaliLiveNow(self, callSign=None, excludes=[]):
+    def OttieniEpg(self, time=None, callSign=None):
         self.log('Trying to get the live channels NOW', 4)
-        result = []
+        result = {}
         if not callSign:
             callSign = 'nownext'
         jsn = self.getJson("https://static3.mediasetplay.mediaset.it/apigw/nownext/{}.json".format(callSign))
@@ -781,28 +789,51 @@ class Mediaset(rutils.RUtils):
                 listings = {callSign: jsn['response']}
             else:
                 return result
-            now = staticutils.get_timestamp()
+            if not time:
+                time = staticutils.get_timestamp()
             for channel in listings.values():
                 station = list(channel['stations'].values())[0]
                 self.log('station {}'.format(station))
                 currentListing = channel['currentListing']
                 nextListing = channel['nextListing'] if 'nextListing' in channel else None
-                if currentListing['startTime'] <= now <= currentListing['endTime']:
-                    if self.__checkStation(station, excludes):
-                        result.append({
-                            'station': station,
-                            'publicUrl': channel['publicUrl'],
-                            'currentListing': currentListing,
-                            'nextListing': nextListing,
-                        })
+                if currentListing['startTime'] <= time <= currentListing['endTime']:
+                    result[station['callSign']] = {
+                        'station': station,
+                        'publicUrl': channel['publicUrl'],
+                        'currentListing': currentListing,
+                        'nextListing': nextListing,
+                    }
         return result
+    
+    def OttieniEpgListing(self, chid, start, finish):
+        self.log(('Trying to get the tv guide from {} channel starting {} finishing {}').format(chid, str(start), str(finish)), 4)
+        args = {'byCallSign': chid, 'byListingTime': '{s}~{f}'.format(s=str(start), f=str(finish))}
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/feed/allListingFeedEpg/v2.0", args=args)
+        jsn = self.getJson(url)
+        if jsn and 'response' in jsn and 'entries' in jsn['response'] and jsn['response']['entries']:
+            return list(filter(lambda x: self.checkStation(x, includes=['MediasetPlay_AVOD'], excludes=['SVOD']) , jsn['response']['entries'][0]['listings']))
+        return False
 
-    def __checkStation(self, station, excludes=[]):
-        if 'mediasetstation$channelsRights' in station and excludes:
-            for x in station['mediasetstation$channelsRights']:
-                if x in excludes:
-                    return False
-        return True
+    def checkStation(self, program, includes=[], excludes=[]):
+        channelsRights = {}
+        if 'program' in program:
+            program = program['program']
+        if 'mediasetstation$channelsRights' in program:
+            channelsRights = program['mediasetstation$channelsRights']
+        elif 'mediasetprogram$channelsRights' in program:
+            channelsRights = program['mediasetprogram$channelsRights']
+        found = True
+        if channelsRights:
+            if includes:
+                found = False
+                for x in includes:
+                    if x in channelsRights:
+                        found = True
+            for x in excludes:
+                if x in channelsRights:
+                    found = False
+                    break
+        return found
 
     def OttieniLiveStream(self, guid):
         self.log('Trying to get live and rewind channel program of id {}'.format(guid), 4)

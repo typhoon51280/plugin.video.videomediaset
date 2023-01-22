@@ -27,7 +27,6 @@ def _gather_media_type(prog):
         programType = prog['programType']
     if 'programtype' in prog:
         programType = prog['programtype']
-    kodiutils.log('_gather_media_type programtype {}'.format(programType))
     if programType:
         if programType == 'movie':
             return 'movie'

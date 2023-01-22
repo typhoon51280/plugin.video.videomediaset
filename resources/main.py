@@ -20,7 +20,7 @@ class KodiMediaset(object):
 
     def __imposta_tipo_media(self, prog):
         if self.detect_media_type:
-            kodiutils.log('__analizza_elenco mediatype: {}'.format(_gather_media_type(prog)))
+            # kodiutils.log('__analizza_elenco mediatype: {}'.format(_gather_media_type(prog)))
             kodiutils.setContent(_gather_media_type(prog) + 's')
 
     def __geItemtArt(self, icon='notify.png', poster='', fanart='fanart.jpg'):
@@ -463,7 +463,7 @@ class KodiMediaset(object):
     
     def guida_tv_root(self):
         kodiutils.setContent('videos')
-        els, _ = self.med.OttieniCanaliLive(sort='ShortTitle')
+        els, _ = self.med.OttieniCanaliLive(sort='ShortTitle', channelTypes=['TV'])
         for prog in els:
             kodiutils.log(('prog: {}').format(str(prog)), 4)
             infos = _gather_info(prog)
@@ -489,45 +489,53 @@ class KodiMediaset(object):
         kodiutils.endScript()
 
     def guida_tv_canale_giorno(self, cid, dt):
-        res = self.med.OttieniGuidaTV(cid, dt, dt + 86399999)  # 86399999 is one day minus 1 ms
-        kodiutils.setContent('videos')
-        if 'listings' in res:
-            for el in res['listings']:
-                program = el['program'] if 'program' in el else {}
+        res = self.med.OttieniEpgListing(cid, dt, dt + 86399999)  # 86399999 is one day minus 1 ms
+        kodiutils.setContent('episodes')
+        if res:
+            for el in res:
+                program = el['program'] if 'program' in el else el
                 if (kodiutils.getSettingAsBool('fullguide') or
                         ('mediasetprogram$hasVod' in program and program['mediasetprogram$hasVod'])):
-                    infos = _gather_info(el)
-                    arts = _gather_art(el)
+                    # kodiutils.log(('guida_tv_canale_giorno el={}').format(str(el)))
+                    infos = _gather_info(program)
+                    arts = _gather_art(program)
                     s_time = staticutils.get_date_from_timestamp(
                         el['startTime']).strftime("%H:%M")
                     e_time = staticutils.get_date_from_timestamp(
                         el['endTime']).strftime("%H:%M")
-                    s = "{s}-{e} - {t}".format(s=s_time, e=e_time,
-                                               t=el['mediasetlisting$epgTitle'].encode('utf8'))
-                    kodiutils.addListItem(s,
+                    programType = _gather_media_type(program)
+                    showTitle = str(el['mediasetlisting$epgTitle'])
+                    episodeTitle = str(program['title']) if programType != 'movie' else ""
+                    infos['title'] = "[COLOR blue][B]{s} - {e}[/B][/COLOR] [COLOR cyan]{t}[/COLOR] [I]{u}[/I]".format(s=s_time, e=e_time, t=showTitle, u=episodeTitle)
+                    kodiutils.addListItem(infos['title'],
                                           {'mode': 'video', 'guid': program['guid']},
                                           videoInfo=infos, arts=arts, properties={'ResumeTime': '0.0', 'TotalTime': '0.0', 'StartOffset': '0.0'}, isFolder=False)
         kodiutils.endScript()
 
     def canali_live_root(self):
         kodiutils.setContent('videos')
-        chans = self.med.OttieniCanaliLiveNow(excludes=['MediasetItalia_SVOD', 'UCL_SVOD'])
-        for liveChannel in chans:
-            kodiutils.log(('canali_live_root liveChannel={}').format(str(liveChannel)))
-            prog = liveChannel['currentListing']
-            chan = liveChannel['station']
-            title = '{} - {}'.format(chan['title'],kodiutils.py2_encode(prog["mediasetlisting$epgTitle"]))
-            infos = _gather_info(prog, infos={'title': title})
-            arts = {**_gather_art(prog), **_gather_art(chan)}
-            data = {'mode': 'live'}
-            if 'mediasetlisting$restartAllowed' in prog and prog['mediasetlisting$restartAllowed'] and kodiutils.getSettingAsBool('splitlive'):
-                data['guid'] = chan['callSign']
-            else:
-                data['publicUrl'] = liveChannel['publicUrl']
-            kodiutils.log(('canali_live_root infos={}').format(str(infos)))
-            kodiutils.log(('canali_live_root arts={}').format(str(arts)))
-            kodiutils.log(('canali_live_root title={} data={}').format(str(title), str(data)))
-            kodiutils.addListItem(title, data, videoInfo=infos, arts=arts, isFolder=('guid' in data))
+        els, _ = self.med.OttieniCanaliLive(sort='ShortTitle')
+        chans = self.med.OttieniEpg()
+        for el in els:
+            if el['callSign'] in chans:
+                callSign = el['callSign']
+                liveChannel = chans[callSign]
+                kodiutils.log(('canali_live_root liveChannel={}').format(str(liveChannel)))
+                prog = liveChannel['currentListing']
+                program = prog['program']
+                chan = liveChannel['station']
+                infos = _gather_info(program)
+                arts = {**_gather_art(program), **_gather_art(chan)}
+                programType = _gather_media_type(program)
+                showTitle = str(prog['mediasetlisting$epgTitle'])
+                episodeTitle = str(program['title']) if programType != 'movie' and program['title'] != prog['mediasetlisting$epgTitle'] else ""
+                infos['title'] = "[COLOR blue][B]{channel}[/B][/COLOR] [COLOR cyan]{showTitle}[/COLOR] [I]{episodeTitle}[/I]".format(showTitle=showTitle, channel=chan['title'], episodeTitle=episodeTitle)
+                data = {'mode': 'live'}
+                if 'mediasetlisting$restartAllowed' in prog and prog['mediasetlisting$restartAllowed'] and kodiutils.getSettingAsBool('splitlive'):
+                    data['guid'] = callSign
+                else:
+                    data['publicUrl'] = liveChannel['publicUrl']
+                kodiutils.addListItem(infos['title'], data, videoInfo=infos, arts=arts, isFolder=('guid' in data))
         kodiutils.endScript()
 
     def __ottieni_vid_restart(self, guid):
@@ -539,10 +547,11 @@ class KodiMediaset(object):
         return None
 
     def canali_live_play(self, guid):
-        chans = self.med.OttieniCanaliLiveNow(callSign=guid)
-        kodiutils.log(('canali_live_play chans={}').format(str(chans)))
-        if chans:
-            liveChannel = chans[0]
+        kodiutils.setContent('episodes')
+        chans = self.med.OttieniEpg(callSign=guid)
+        if chans and guid in chans:
+            liveChannel = chans[guid]
+            kodiutils.log(('canali_live_play liveChannel={}').format(str(liveChannel)))
             prog = liveChannel['currentListing']
             chan = liveChannel['station']
             infos = _gather_info(prog)
@@ -557,10 +566,10 @@ class KodiMediaset(object):
             
             title = infos['title']
             infos['title'] = '([COLOR green]{}[/COLOR]) {}'.format(kodiutils.LANGUAGE(32137),title)
-            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': liveChannel['publicUrl']}, videoInfo=infos, arts=arts, isFolder=False)
+            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': liveChannel['publicUrl']}, properties={'ResumeTime': '0.0'}, videoInfo=infos, arts=arts, isFolder=False)
 
             infos['title'] = '([COLOR yellow]{}[/COLOR]) {}'.format(kodiutils.LANGUAGE(32138),title)
-            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': prog['restartUrl']}, videoInfo=infos, arts=arts, isFolder=False)
+            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': prog['restartUrl']}, properties={'ResumeTime': '0.0'}, videoInfo=infos, arts=arts, isFolder=False)
 
         kodiutils.endScript()
 
