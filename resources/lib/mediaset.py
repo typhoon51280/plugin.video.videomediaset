@@ -767,6 +767,43 @@ class Mediaset(rutils.RUtils):
             pageels=None, page=None, args=args, passkeys=False)
         return self.__getEntriesFromUrl(url)
 
+    def OttieniCanaliLiveNow(self, callSign=None, excludes=[]):
+        self.log('Trying to get the live channels NOW', 4)
+        result = []
+        if not callSign:
+            callSign = 'nownext'
+        jsn = self.getJson("https://static3.mediasetplay.mediaset.it/apigw/nownext/{}.json".format(callSign))
+        if jsn and 'response' in jsn:
+            listings = {}
+            if 'listings' in jsn['response']:
+                listings = jsn['response']['listings']
+            elif callSign:
+                listings = {callSign: jsn['response']}
+            else:
+                return result
+            now = staticutils.get_timestamp()
+            for channel in listings.values():
+                station = list(channel['stations'].values())[0]
+                self.log('station {}'.format(station))
+                currentListing = channel['currentListing']
+                nextListing = channel['nextListing'] if 'nextListing' in channel else None
+                if currentListing['startTime'] <= now <= currentListing['endTime']:
+                    if self.__checkStation(station, excludes):
+                        result.append({
+                            'station': station,
+                            'publicUrl': channel['publicUrl'],
+                            'currentListing': currentListing,
+                            'nextListing': nextListing,
+                        })
+        return result
+
+    def __checkStation(self, station, excludes=[]):
+        if 'mediasetstation$channelsRights' in station and excludes:
+            for x in station['mediasetstation$channelsRights']:
+                if x in excludes:
+                    return False
+        return True
+
     def OttieniLiveStream(self, guid):
         self.log('Trying to get live and rewind channel program of id {}'.format(guid), 4)
         url = 'https://static3.mediasetplay.mediaset.it/apigw/nownext/{}.json'.format(guid)
@@ -781,14 +818,16 @@ class Mediaset(rutils.RUtils):
             return data
         return False
 
-    def OttieniDatiVideo(self, pid, live=False, properties=None):
-        self.log('Trying to get video data from pid ' + pid, 4)
-        u = 'https://link.theplatform.eu/s/PR1GhC/'
-        if not live:
-            u += 'media/'
-        u += pid + ('?auto=true&balance=true&format=smil&formats=MPEG-DASH,MPEG4,M3U&tracking=true'
+    def OttieniDatiVideo(self, pid, publicUrl=None, live=False, properties=None):
+        if not publicUrl:
+            self.log('Trying to get video data from pid ' + pid, 4)
+            publicUrl = 'https://link.theplatform.eu/s/PR1GhC/'
+            if not live:
+                publicUrl += 'media/'
+            publicUrl += pid
+        publicUrl += ('?auto=true&balance=true&format=smil&formats=MPEG-DASH,MPEG4,M3U&tracking=true'
                     '&assetTypes=HD,browser,widevine,geoIT|geoNo:HD,browser,geoIT|geoNo:HD,geoIT|geoNo:SD,browser,widevine,geoIT|geoNo:SD,browser,geoIT|geoNo:SD,geoIT|geoNo')
-        text = self.getText(u)
+        text = self.getText(publicUrl)
         res = {'url': '', 'pid': '', 'type': '', 'security': False}
         root = ET.fromstring(text)
         for vid in root.findall('.//{http://www.w3.org/2005/SMIL21/Language}switch'):

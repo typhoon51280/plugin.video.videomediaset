@@ -469,7 +469,7 @@ class KodiMediaset(object):
             infos = _gather_info(prog)
             arts = _gather_art(prog)
             if 'tuningInstruction' in prog:
-                if prog['tuningInstruction'] and not prog['mediasetstation$eventBased']:
+                if prog['tuningInstruction'] and not ('mediasetstation$eventBased' in prog and prog['mediasetstation$eventBased']):
                     kodiutils.addListItem(prog["title"],
                                           {'mode': 'guida_tv', 'id': prog['callSign'],
                                            'week': staticutils.get_timestamp_midnight()},
@@ -511,47 +511,23 @@ class KodiMediaset(object):
 
     def canali_live_root(self):
         kodiutils.setContent('videos')
-        now = staticutils.get_timestamp()
-        els, _ = self.med.OttieniProgrammiLive()  # (sort='title')
-        chans = {}
-        for chan in els:
-            if 'listings' in chan and chan['listings']:
-                for prog in chan['listings']:
-                    if prog['startTime'] <= now <= prog['endTime']:
-                        guid = chan['guid']
-                        title = '{} - {}'.format(chan['title'],kodiutils.py2_encode(prog["mediasetlisting$epgTitle"]))
-                        chans[guid] = {'title': title,
-                                       'infos': _gather_info(prog, infos={'title': title}),
-                                       'arts': _gather_art(prog),
-                                       'restartAllowed': prog['mediasetlisting$restartAllowed']}
-        kodiutils.log(('chans: {}').format(str(chans)))
-        els, _ = self.med.OttieniCanaliLive(sort='shortTitle|asc')
-        for prog in els:
-            if ('callSign' in prog and prog['callSign'] in chans and 'tuningInstruction' in prog and prog['tuningInstruction']):
-                chn = chans[prog['callSign']]
-                if not chn['arts']:
-                    chn['arts'] = _gather_art(prog)
-                if chn['restartAllowed']:
-                    if kodiutils.getSettingAsBool('splitlive'):
-                        kodiutils.addListItem(chn['title'], {'mode': 'live',
-                                                             'guid': prog['callSign']},
-                                              videoInfo=chn['infos'], arts=chn['arts'])
-                        continue
-                    vid = self.__ottieni_vid_restart(prog['callSign'])
-                    if vid:
-                        kodiutils.addListItem(chn['title'], {'mode': 'video', 'pid': vid},
-                                              videoInfo=chn['infos'], arts=chn['arts'], properties={'ResumeTime': '0.0'},
-                                              isFolder=False)
-                        continue
-                data = {'mode': 'live'}
-                vdata = prog['tuningInstruction']['urn:theplatform:tv:location:any']
-                for v in vdata:
-                    if v['format'] == 'application/x-mpegURL':
-                        data['id'] = v['releasePids'][0]
-                    else:
-                        data['mid'] = v['releasePids'][0]
-                kodiutils.addListItem(prog['title'], data,
-                                      videoInfo=chn['infos'], arts=chn['arts'], isFolder=False)
+        chans = self.med.OttieniCanaliLiveNow(excludes=['MediasetItalia_SVOD', 'UCL_SVOD'])
+        for liveChannel in chans:
+            kodiutils.log(('canali_live_root liveChannel={}').format(str(liveChannel)))
+            prog = liveChannel['currentListing']
+            chan = liveChannel['station']
+            title = '{} - {}'.format(chan['title'],kodiutils.py2_encode(prog["mediasetlisting$epgTitle"]))
+            infos = _gather_info(prog, infos={'title': title})
+            arts = {**_gather_art(prog), **_gather_art(chan)}
+            data = {'mode': 'live'}
+            if 'mediasetlisting$restartAllowed' in prog and prog['mediasetlisting$restartAllowed'] and kodiutils.getSettingAsBool('splitlive'):
+                data['guid'] = chan['callSign']
+            else:
+                data['publicUrl'] = liveChannel['publicUrl']
+            kodiutils.log(('canali_live_root infos={}').format(str(infos)))
+            kodiutils.log(('canali_live_root arts={}').format(str(arts)))
+            kodiutils.log(('canali_live_root title={} data={}').format(str(title), str(data)))
+            kodiutils.addListItem(title, data, videoInfo=infos, arts=arts, isFolder=('guid' in data))
         kodiutils.endScript()
 
     def __ottieni_vid_restart(self, guid):
@@ -563,36 +539,29 @@ class KodiMediaset(object):
         return None
 
     def canali_live_play(self, guid):
-        res = self.med.OttieniLiveStream(guid)
-        infos = {}
-        arts = {}
-        title = ''
-        if 'currentListing' in res[0]:
-            listing = res[0]['currentListing']
-            program = listing['program'] if 'program' in listing else {}
-            self.__imposta_tipo_media(program)
-            infos = _gather_info(listing)
-            arts = _gather_art(program)
-            title = program['title'] if 'title' in program else infos['title']
-            title = kodiutils.py2_decode(title)
-        if 'tuningInstruction' in res[0]:
-            data = {'mode': 'live'}
-            vdata = res[0]['tuningInstruction']['urn:theplatform:tv:location:any']
-            for v in vdata:
-                if v['format'] == 'application/x-mpegURL':
-                    data['id'] = v['releasePids'][0]
-                else:
-                    data['mid'] = v['releasePids'][0]
-            infos['title'] = kodiutils.LANGUAGE(32137) + ' - ' + title
-            kodiutils.addListItem(infos['title'], data, videoInfo=infos,
-                                  arts=arts, properties={'ResumeTime': '0.0'}, isFolder=False)
-        if ('currentListing' in res[0] and
-                res[0]['currentListing']['mediasetlisting$restartAllowed']):
-            url = res[0]['currentListing']['restartUrl']
-            vid = url.rpartition('/')[-1]
-            infos['title'] = kodiutils.LANGUAGE(32138) + ' - ' + title
-            kodiutils.addListItem(infos['title'], {'mode': 'video', 'pid': vid},
-                                  videoInfo=infos, arts=arts, properties={'ResumeTime': '0.0'}, isFolder=False)
+        chans = self.med.OttieniCanaliLiveNow(callSign=guid)
+        kodiutils.log(('canali_live_play chans={}').format(str(chans)))
+        if chans:
+            liveChannel = chans[0]
+            prog = liveChannel['currentListing']
+            chan = liveChannel['station']
+            infos = _gather_info(prog)
+            arts = {**_gather_art(prog), **_gather_art(chan)}
+
+            if 'mediasetlisting$epgTitle' in prog:
+                infos['title'] = prog['mediasetlisting$epgTitle']
+                if 'mediasetlisting$shortDescription' in prog and prog['mediasetlisting$shortDescription']:
+                    infos['title'] += ' - ' + prog['mediasetlisting$shortDescription']
+            elif 'title' in prog:
+                infos['title'] = prog['title']
+            
+            title = infos['title']
+            infos['title'] = '([COLOR green]{}[/COLOR]) {}'.format(kodiutils.LANGUAGE(32137),title)
+            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': liveChannel['publicUrl']}, videoInfo=infos, arts=arts, isFolder=False)
+
+            infos['title'] = '([COLOR yellow]{}[/COLOR]) {}'.format(kodiutils.LANGUAGE(32138),title)
+            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': prog['restartUrl']}, videoInfo=infos, arts=arts, isFolder=False)
+
         kodiutils.endScript()
 
     def riproduci_guid(self, guid='', offset=None):
@@ -604,11 +573,11 @@ class KodiMediaset(object):
             return
         self.riproduci_video(guid=guid, pid=res['media'][0]['pid'], offset=offset)
 
-    def riproduci_video(self, guid=None, pid=None, live=False, offset=None):
+    def riproduci_video(self, guid=None, pid=None, publicUrl=None, live=False, offset=None):
         from inputstreamhelper import Helper  # pylint: disable=import-error
         # kodiutils.log("Trying to get the video from pid %s" % pid)
         kodiutils.log('riproduci_video: guid={}, pid={}, live={}, offset={}'.format(guid,pid,live,offset))
-        data = self.med.OttieniDatiVideo(pid, live)
+        data = self.med.OttieniDatiVideo(pid, publicUrl, live)
         kodiutils.log('riproduci_video: data={}'.format(str(data)))
         if data['type'] == 'video/mp4':
             kodiutils.setResolvedUrl(data['url'])
@@ -713,6 +682,8 @@ class KodiMediaset(object):
                 else:
                     self.riproduci_guid(**self.sliceParams(params, ('guid','offset')))
             elif params['mode'] == "live":
+                if 'publicUrl' in params:
+                    self.riproduci_video(publicUrl=params['publicUrl'], live=True)
                 if 'id' in params:
                     self.riproduci_video(pid=params['id'], live=True)
                 else:
