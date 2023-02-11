@@ -324,7 +324,7 @@ class Mediaset(rutils.RUtils):
     def accountRefresh(self, account={}):
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/gigya/renew/v2.0'
         data = {
-            "client_id": account['deviceId']
+            "client_id": account['deviceId'] if 'deviceId' in account else '',
         }
         jsn = self.getJson(url, json=data, headers=self.getAuthHeaders())
         if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
@@ -341,7 +341,7 @@ class Mediaset(rutils.RUtils):
             "id": account['currentPersona'],
             "gt": account['id_token'],
             "appName": account['appName'],
-            "client_id": account['deviceId'],
+            "client_id": account['deviceId'] if 'deviceId' in account else '',
             "include": "personas,accountInfo,adminBeToken"
         }
         jsn = self.getJson(url, json=data)
