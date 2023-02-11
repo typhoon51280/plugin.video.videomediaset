@@ -255,9 +255,9 @@ class Mediaset(rutils.RUtils):
 
     @kodiutils.store('account', inject=False)
     def anonymousLogin(self):
-        clientId = str(uuid.uuid4())
+        deviceId = str(uuid.uuid4())
         data = {
-            "client_id": clientId,
+            "client_id": deviceId,
             "appName": self.APP_NAME
         }
         url = "https://api-ott-prod-fe.mediaset.net/PROD/play/idm/anonymous/login/v2.0"
@@ -268,8 +268,10 @@ class Mediaset(rutils.RUtils):
                 "beToken_ttl": staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=43420000)),
                 "accountType": 'anonymous',
                 "sid": jsn['response']['sid'],
-                "clientId": clientId,
-                "appName": self.APP_NAME
+                "deviceId": deviceId,
+                "appName": self.APP_NAME,
+                "clientId": 'G00ACCwObNtI1hELC00Y/1lLGLO9DiMr61MsOinSApNJaWtOOU0CpThpZXaiw8YYOJa0mtUNXCoONJ7UmP4IHgM=',
+                "userContext": 'iwiAeyJwbGF0Zm9ybSI6IndlYiJ9Aw==',
             }
         return None
 
@@ -277,7 +279,7 @@ class Mediaset(rutils.RUtils):
     def accountSetup(self, account={}):
         self.log('accountSetup: {}'.format(account))
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/action/create/v2.0'
-        clientId = str(uuid.uuid4())
+        deviceId = str(uuid.uuid4())
         action_url = "https://mediasetinfinity.mediaset.it/tv"
         action_url_full = action_url + "?pin={action_pin}"
         data = {
@@ -285,7 +287,7 @@ class Mediaset(rutils.RUtils):
             "action_url": action_url_full,
             "action_data": {
                 "appName": self.APP_NAME,
-                "client_id": clientId,
+                "client_id": deviceId,
                 "include": "personas,accountInfo,adminBeToken"
             },
             "action_info": {
@@ -297,7 +299,7 @@ class Mediaset(rutils.RUtils):
             response = jsn['response']
             response['action_url'] = action_url
             response['action_url_full'] = action_url_full.format(action_pin=response['action_pin'])
-            return {**self.mapDevice(response), **{"appName": self.APP_NAME, "clientId": clientId}}
+            return {**self.mapDevice(response), **{"appName": self.APP_NAME, "deviceId": deviceId}}
         return False
 
     @kodiutils.store('account')
@@ -322,7 +324,7 @@ class Mediaset(rutils.RUtils):
     def accountRefresh(self, account={}):
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/gigya/renew/v2.0'
         data = {
-            "client_id": account['clientId']
+            "client_id": account['deviceId']
         }
         jsn = self.getJson(url, json=data, headers=self.getAuthHeaders())
         if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
@@ -339,7 +341,7 @@ class Mediaset(rutils.RUtils):
             "id": account['currentPersona'],
             "gt": account['id_token'],
             "appName": account['appName'],
-            "client_id": account['clientId'],
+            "client_id": account['deviceId'],
             "include": "personas,accountInfo,adminBeToken"
         }
         jsn = self.getJson(url, json=data)
@@ -371,13 +373,24 @@ class Mediaset(rutils.RUtils):
         jsn = self.getJson(url, json=data)
         if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             response = jsn['response']
+            userSegmentation = self.getUserSegmentation(account)
             return {
                 'beToken': response['beToken'],
                 'beToken_ttl': staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration'])),
                 'currentPersona': idPersona,
                 'accountType': 'account',
+                'clientId': userSegmentation['clientId'] if 'clientId' in userSegmentation else '',
+                'userContext': userSegmentation['userContext'] if 'userContext' in userSegmentation else '',
             }
         return False
+
+    def getUserSegmentation(self, account):
+        url = 'https://api.cloud.mediaset.net/segmentation/v2/ud'
+        params = {
+            'sid': account['sid'] if 'sid' in account else '',
+            'deviceId': account['deviceId'] if 'deviceId' in account else '',
+        }
+        return self.getJson(url, headers=self.getAuthHeaders(), params=params)
 
     def userInfo(self, caToken, idPersona):
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/comm/syntheticuserinfo/v2.0'
@@ -692,7 +705,9 @@ class Mediaset(rutils.RUtils):
             'uxReference': self.uxMapping(gid),
             'property': 'play',
             'tenant': 'play-prod-v2',
-            'sessionId': account['sid']
+            'sessionId': account['sid'],
+            'userContext': account['userContext'] if 'userContext' in account else '',
+            'clientId': account['clientId'] if 'clientId' in account else '',
         }
         if params:
             args['params'] = params
@@ -743,12 +758,26 @@ class Mediaset(rutils.RUtils):
             args['byCustomValue'] = ','.join(byCustomValue)
         return self.__getEntriesFromUrl(url, args=args)
 
-    def Cerca(self, query, section=None, pageels=100, page=None):
-        args = {'query': query, 'platform': 'pc'}
-        if section:
-            args['uxReference'] = self.uxReferenceMapping[section]
-        url = self.__createMediasetUrl('https://api-ott-prod-fe.mediaset.net/PROD/play/rec2/search/v1.0', pageels=pageels, page=page, args=args)
-        return self.__getElsFromUrl(url)
+    def Cerca(self, query, channel='', section='', pageels=100, page=None):
+        account = self.getAccount()
+        args = {
+            'tenant': 'play-prod-v2',
+            'property': 'search',
+            'uxReference': 'filteredSearch',
+            'params': 'channel≈{};variant≈{}'.format(channel, section if section!='all' else ''),
+            'query': query,
+            'sid': account['sid'] if 'sid' in account else '',
+            'clientId': account['clientId'] if 'clientId' in account else '',
+            'userContext': account['userContext'] if 'userContext' in account else '',
+            'shortId': '',
+            'contentId': '',
+            'aresContext': '',
+        }
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/reco/{}/v2.0".format(self.getAccount('accountType')), pageels, page = page, args=args)
+        data, hasMore = self.__getElsFromUrl(url, headers=self.getAuthHeaders())
+        # if sort and data and not hasMore:
+        #     return sorted(data, key=lambda k: k[sort] if sort in k else '', reverse=(not order == 'asc')), hasMore
+        return data, hasMore
 
     def OttieniGuidaTV(self, chid, start, finish):
         self.log(('Trying to get the tv guide from {} channel '

@@ -123,16 +123,16 @@ msgid "Guida TV"
 msgstr "Guida TV"
 
 msgctxt "#32115"
-msgid "Programmi"
-msgstr "Programmi"
+msgid "Programmi e serie"
+msgstr "Programmi e serie"
 
 msgctxt "#32116"
-msgid "Clip"
-msgstr "Clip"
+msgid "Video"
+msgstr "Video"
 
 msgctxt "#32117"
-msgid "Episodi"
-msgstr "Episodi"
+msgid "Gratis per te"
+msgstr "Gratis per te"
 
 msgctxt "#32121"
 msgid "Tutti"

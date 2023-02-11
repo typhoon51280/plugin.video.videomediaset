@@ -150,9 +150,9 @@ class KodiMediaset(object):
                 kodiutils.addListItem(title, args, videoInfo=infos, arts=arts, menuItems=menuItems)
             else:
                 kodiutils.log('__analizza_elenco other: {}'.format(str(prog)), 4)
-                item_id = prog['mediasetprogram$brandId'] if prog['mediasetprogram$brandId'] else ''
+                item_id = prog['mediasetprogram$brandId'] if 'mediasetprogram$brandId' in prog and prog['mediasetprogram$brandId'] else ''
                 args['mode'] = 'programma'
-                args['brand_id'] = prog['mediasetprogram$brandId']
+                args['brand_id'] = prog['mediasetprogram$brandId'] if 'mediasetprogram$brandId' in prog and prog['mediasetprogram$brandId'] else ''
                 menuItems = self.menuItems(isDeletable=isDeletable, delete_list=delete_list, item_id=item_id, guid=guid, context_ui=context_ui)
                 kodiutils.addListItem(prog["title"], args, videoInfo=infos, arts=arts, menuItems=menuItems)
 
@@ -246,10 +246,11 @@ class KodiMediaset(object):
 
     def elenco_cerca_root(self):
         arts = self.__getDirectoryArt()
-        kodiutils.addListItem(kodiutils.LANGUAGE(32115), {'mode': 'cerca', 'type': 'programmi'}, arts=arts)
-        kodiutils.addListItem(kodiutils.LANGUAGE(32116), {'mode': 'cerca', 'type': 'clip'}, arts=arts)
-        kodiutils.addListItem(kodiutils.LANGUAGE(32117), {'mode': 'cerca', 'type': 'episodi'}, arts=arts)
-        kodiutils.addListItem(kodiutils.LANGUAGE(32103), {'mode': 'cerca', 'type': 'film'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32121), {'mode': 'cerca', 'type': 'all'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32115), {'mode': 'cerca', 'type': 'brand'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32103), {'mode': 'cerca', 'type': 'movie'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32116), {'mode': 'cerca', 'type': 'video'}, arts=arts)
+        kodiutils.addListItem(kodiutils.LANGUAGE(32117), {'mode': 'cerca', 'type': 'subscription'}, arts=arts)
         kodiutils.endScript()
 
     def apri_ricerca(self, sez):
@@ -257,11 +258,8 @@ class KodiMediaset(object):
         self.elenco_cerca_sezione(sez, text, 1)
 
     def elenco_cerca_sezione(self, sez, text, page=None):
-        switcher = {'programmi': 'CWSEARCHBRAND', 'clip': 'CWSEARCHCLIP',
-                    'episodi': 'CWSEARCHEPISODE', 'film': 'CWSEARCHMOVIE'}
-        sezcode = switcher.get(sez)
         if text:
-            els, hasmore = self.med.Cerca(text, sezcode, pageels=self.iperpage, page=page)
+            els, hasmore = self.med.Cerca(text, section=sez, pageels=self.iperpage, page=page)
             if els:
                 if hasmore:
                     kodiutils.addListItem(kodiutils.LANGUAGE(32130), {'mode': 'cerca', 'search': text, 'type': sez, 'page': page + 1 if page else 2}, properties={'SpecialSort': 'top'}, arts=self.__getForwardArt())
