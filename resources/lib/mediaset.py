@@ -133,7 +133,8 @@ class Mediaset(rutils.RUtils):
         }
         rutils.RUtils.__init__(self, enable_cache=kodiutils.getSettingAsBool('cache'), enable_mem_cache=kodiutils.getSettingAsBool('cachememory'))
         if not self.isAuthenticated():
-            self.anonymousLogin()
+            if not(self.isAnonymous() and self.isValidBeToken()):
+                self.anonymousLogin()
 
     @kodiutils.store('account', inject=False)
     def setAccount(self, key=None, value=None):
@@ -254,9 +255,9 @@ class Mediaset(rutils.RUtils):
 
     @kodiutils.store('account', inject=False)
     def anonymousLogin(self):
-        clientId = str(uuid.uuid4())
+        deviceId = str(uuid.uuid4())
         data = {
-            "client_id": clientId,
+            "client_id": deviceId,
             "appName": self.APP_NAME
         }
         url = "https://api-ott-prod-fe.mediaset.net/PROD/play/idm/anonymous/login/v2.0"
@@ -267,8 +268,10 @@ class Mediaset(rutils.RUtils):
                 "beToken_ttl": staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=43420000)),
                 "accountType": 'anonymous',
                 "sid": jsn['response']['sid'],
-                "clientId": clientId,
-                "appName": self.APP_NAME
+                "deviceId": deviceId,
+                "appName": self.APP_NAME,
+                "clientId": 'G00ACCwObNtI1hELC00Y/1lLGLO9DiMr61MsOinSApNJaWtOOU0CpThpZXaiw8YYOJa0mtUNXCoONJ7UmP4IHgM=',
+                "userContext": 'iwiAeyJwbGF0Zm9ybSI6IndlYiJ9Aw==',
             }
         return None
 
@@ -276,7 +279,7 @@ class Mediaset(rutils.RUtils):
     def accountSetup(self, account={}):
         self.log('accountSetup: {}'.format(account))
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/action/create/v2.0'
-        clientId = str(uuid.uuid4())
+        deviceId = str(uuid.uuid4())
         action_url = "https://mediasetinfinity.mediaset.it/tv"
         action_url_full = action_url + "?pin={action_pin}"
         data = {
@@ -284,7 +287,7 @@ class Mediaset(rutils.RUtils):
             "action_url": action_url_full,
             "action_data": {
                 "appName": self.APP_NAME,
-                "client_id": clientId,
+                "client_id": deviceId,
                 "include": "personas,accountInfo,adminBeToken"
             },
             "action_info": {
@@ -296,7 +299,7 @@ class Mediaset(rutils.RUtils):
             response = jsn['response']
             response['action_url'] = action_url
             response['action_url_full'] = action_url_full.format(action_pin=response['action_pin'])
-            return {**self.mapDevice(response), **{"appName": self.APP_NAME, "clientId": clientId}}
+            return {**self.mapDevice(response), **{"appName": self.APP_NAME, "deviceId": deviceId}}
         return False
 
     @kodiutils.store('account')
@@ -321,7 +324,7 @@ class Mediaset(rutils.RUtils):
     def accountRefresh(self, account={}):
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/idm/gigya/renew/v2.0'
         data = {
-            "client_id": account['clientId']
+            "client_id": account['deviceId']
         }
         jsn = self.getJson(url, json=data, headers=self.getAuthHeaders())
         if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
@@ -338,7 +341,7 @@ class Mediaset(rutils.RUtils):
             "id": account['currentPersona'],
             "gt": account['id_token'],
             "appName": account['appName'],
-            "client_id": account['clientId'],
+            "client_id": account['deviceId'],
             "include": "personas,accountInfo,adminBeToken"
         }
         jsn = self.getJson(url, json=data)
@@ -370,13 +373,24 @@ class Mediaset(rutils.RUtils):
         jsn = self.getJson(url, json=data)
         if 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             response = jsn['response']
+            userSegmentation = self.getUserSegmentation(account)
             return {
                 'beToken': response['beToken'],
                 'beToken_ttl': staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration'])),
                 'currentPersona': idPersona,
                 'accountType': 'account',
+                'clientId': userSegmentation['clientId'] if 'clientId' in userSegmentation else '',
+                'userContext': userSegmentation['userContext'] if 'userContext' in userSegmentation else '',
             }
         return False
+
+    def getUserSegmentation(self, account):
+        url = 'https://api.cloud.mediaset.net/segmentation/v2/ud'
+        params = {
+            'sid': account['sid'] if 'sid' in account else '',
+            'deviceId': account['deviceId'] if 'deviceId' in account else '',
+        }
+        return self.getJson(url, headers=self.getAuthHeaders(), params=params)
 
     def userInfo(self, caToken, idPersona):
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/comm/syntheticuserinfo/v2.0'
@@ -691,7 +705,9 @@ class Mediaset(rutils.RUtils):
             'uxReference': self.uxMapping(gid),
             'property': 'play',
             'tenant': 'play-prod-v2',
-            'sessionId': account['sid']
+            'sessionId': account['sid'],
+            'userContext': account['userContext'] if 'userContext' in account else '',
+            'clientId': account['clientId'] if 'clientId' in account else '',
         }
         if params:
             args['params'] = params
@@ -727,19 +743,41 @@ class Mediaset(rutils.RUtils):
             args['sort'] = sort
         return self.__getEntriesFromUrl(url, args)
 
-    def OttieniCanaliLive(self, sort=None):
+    def OttieniCanaliLive(self, sort=None, channelsRights=['MediasetPlay_AVOD'], channelTypes=[]):
         self.log('Trying to get the live channels list', 4)
         url = 'https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-stations-v2'
+        args = {}
+        byCustomValue = []
         if sort:
-            return self.__getEntriesFromUrl(url, {'sort': sort})
-        return self.__getEntriesFromUrl(url)
+            args['sort'] = sort
+        if channelsRights:
+            byCustomValue.append('{{channelsRights}}{{{channelsRights}}}'.format(channelsRights='|'.join(channelsRights)))
+        if channelTypes:
+            byCustomValue.append('{{mediasetstation$channelType}}{{{channelTypes}}}'.format(channelTypes='|'.join(channelTypes)))
+        if byCustomValue:
+            args['byCustomValue'] = ','.join(byCustomValue)
+        return self.__getEntriesFromUrl(url, args=args)
 
-    def Cerca(self, query, section=None, pageels=100, page=None):
-        args = {'query': query, 'platform': 'pc'}
-        if section:
-            args['uxReference'] = self.uxReferenceMapping[section]
-        url = self.__createMediasetUrl('https://api-ott-prod-fe.mediaset.net/PROD/play/rec2/search/v1.0', pageels=pageels, page=page, args=args)
-        return self.__getElsFromUrl(url)
+    def Cerca(self, query, channel='', section='', pageels=100, page=None):
+        account = self.getAccount()
+        args = {
+            'tenant': 'play-prod-v2',
+            'property': 'search',
+            'uxReference': 'filteredSearch',
+            'params': 'channel≈{};variant≈{}'.format(channel, section if section!='all' else ''),
+            'query': query,
+            'sid': account['sid'] if 'sid' in account else '',
+            'clientId': account['clientId'] if 'clientId' in account else '',
+            'userContext': account['userContext'] if 'userContext' in account else '',
+            'shortId': '',
+            'contentId': '',
+            'aresContext': '',
+        }
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/reco/{}/v2.0".format(self.getAccount('accountType')), pageels, page = page, args=args)
+        data, hasMore = self.__getElsFromUrl(url, headers=self.getAuthHeaders())
+        # if sort and data and not hasMore:
+        #     return sorted(data, key=lambda k: k[sort] if sort in k else '', reverse=(not order == 'asc')), hasMore
+        return data, hasMore
 
     def OttieniGuidaTV(self, chid, start, finish):
         self.log(('Trying to get the tv guide from {} channel '
@@ -766,6 +804,66 @@ class Mediaset(rutils.RUtils):
             pageels=None, page=None, args=args, passkeys=False)
         return self.__getEntriesFromUrl(url)
 
+    def OttieniEpg(self, time=None, callSign=None):
+        self.log('Trying to get the live channels NOW', 4)
+        result = {}
+        if not callSign:
+            callSign = 'nownext'
+        jsn = self.getJson("https://static3.mediasetplay.mediaset.it/apigw/nownext/{}.json".format(callSign))
+        if jsn and 'response' in jsn:
+            listings = {}
+            if 'listings' in jsn['response']:
+                listings = jsn['response']['listings']
+            elif callSign:
+                listings = {callSign: jsn['response']}
+            else:
+                return result
+            if not time:
+                time = staticutils.get_timestamp()
+            for channel in listings.values():
+                station = list(channel['stations'].values())[0]
+                self.log('station {}'.format(station))
+                currentListing = channel['currentListing']
+                nextListing = channel['nextListing'] if 'nextListing' in channel else None
+                if currentListing['startTime'] <= time <= currentListing['endTime']:
+                    result[station['callSign']] = {
+                        'station': station,
+                        'publicUrl': channel['publicUrl'],
+                        'currentListing': currentListing,
+                        'nextListing': nextListing,
+                    }
+        return result
+    
+    def OttieniEpgListing(self, chid, start, finish):
+        self.log(('Trying to get the tv guide from {} channel starting {} finishing {}').format(chid, str(start), str(finish)), 4)
+        args = {'byCallSign': chid, 'byListingTime': '{s}~{f}'.format(s=str(start), f=str(finish))}
+        url = self.__createMediasetUrl("https://api-ott-prod-fe.mediaset.net/PROD/play/feed/allListingFeedEpg/v2.0", args=args)
+        jsn = self.getJson(url)
+        if jsn and 'response' in jsn and 'entries' in jsn['response'] and jsn['response']['entries']:
+            return list(filter(lambda x: self.checkStation(x, includes=['MediasetPlay_AVOD'], excludes=['SVOD']) , jsn['response']['entries'][0]['listings']))
+        return False
+
+    def checkStation(self, program, includes=[], excludes=[]):
+        channelsRights = {}
+        if 'program' in program:
+            program = program['program']
+        if 'mediasetstation$channelsRights' in program:
+            channelsRights = program['mediasetstation$channelsRights']
+        elif 'mediasetprogram$channelsRights' in program:
+            channelsRights = program['mediasetprogram$channelsRights']
+        found = True
+        if channelsRights:
+            if includes:
+                found = False
+                for x in includes:
+                    if x in channelsRights:
+                        found = True
+            for x in excludes:
+                if x in channelsRights:
+                    found = False
+                    break
+        return found
+
     def OttieniLiveStream(self, guid):
         self.log('Trying to get live and rewind channel program of id {}'.format(guid), 4)
         url = 'https://static3.mediasetplay.mediaset.it/apigw/nownext/{}.json'.format(guid)
@@ -780,14 +878,16 @@ class Mediaset(rutils.RUtils):
             return data
         return False
 
-    def OttieniDatiVideo(self, pid, live=False, properties=None):
-        self.log('Trying to get video data from pid ' + pid, 4)
-        u = 'https://link.theplatform.eu/s/PR1GhC/'
-        if not live:
-            u += 'media/'
-        u += pid + ('?auto=true&balance=true&format=smil&formats=MPEG-DASH,MPEG4,M3U&tracking=true'
+    def OttieniDatiVideo(self, pid, publicUrl=None, live=False, properties=None):
+        if not publicUrl:
+            self.log('Trying to get video data from pid ' + pid, 4)
+            publicUrl = 'https://link.theplatform.eu/s/PR1GhC/'
+            if not live:
+                publicUrl += 'media/'
+            publicUrl += pid
+        publicUrl += ('?auto=true&balance=true&format=smil&formats=MPEG-DASH,MPEG4,M3U&tracking=true'
                     '&assetTypes=HD,browser,widevine,geoIT|geoNo:HD,browser,geoIT|geoNo:HD,geoIT|geoNo:SD,browser,widevine,geoIT|geoNo:SD,browser,geoIT|geoNo:SD,geoIT|geoNo')
-        text = self.getText(u)
+        text = self.getText(publicUrl)
         res = {'url': '', 'pid': '', 'type': '', 'security': False}
         root = ET.fromstring(text)
         for vid in root.findall('.//{http://www.w3.org/2005/SMIL21/Language}switch'):
