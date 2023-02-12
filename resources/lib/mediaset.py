@@ -563,7 +563,7 @@ class Mediaset(rutils.RUtils):
         self.log('Trying to get the sections list for ondemand section: ' + id, 4)
         data = self.__getsectionsFromEntryID(id)
         if data and sort:
-            return sorted(data, key=lambda k: k[sort] if sort in k else None, reverse=(not order == 'asc'))
+            return sorted(data, key=lambda k: k[sort] if k and sort in k else '', reverse=(not order == 'asc'))
         return data
 
     def OttieniMagazine(self, newsFeedUrl, iperpage=None):
