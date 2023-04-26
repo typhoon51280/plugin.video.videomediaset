@@ -265,7 +265,7 @@ class Mediaset(rutils.RUtils):
         if jsn and 'isOk' in jsn and jsn['isOk']:
             return {
                 "beToken": jsn['response']['beToken'],
-                "beToken_ttl": staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=43420000)),
+                "beToken_ttl": staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'][0:26], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=43420000)),
                 "accountType": 'anonymous',
                 "sid": jsn['response']['sid'],
                 "deviceId": deviceId,
@@ -316,7 +316,7 @@ class Mediaset(rutils.RUtils):
             if response['action_complete'] and 'action_result' in response and 'login' in response['action_result']:
                 login_data = response['action_result']['login']
                 if 'account' in login_data:
-                    login_data['caToken_ttl'] = staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=login_data['duration']))
+                    login_data['caToken_ttl'] = staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'][0:26], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=login_data['duration']))
                     return {**self.mapDevice(), **self.mapLogin(login_data), **self.mapPersonas(login_data['account'])}
         return False
     
@@ -348,7 +348,7 @@ class Mediaset(rutils.RUtils):
         if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn:
             response = jsn['response']
             if 'account' in response:
-                response['caToken_ttl'] = staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration']))
+                response['caToken_ttl'] = staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'][0:26], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration']))
                 response['beToken_ttl'] = response['caToken_ttl']
                 return {**self.mapLogin(response), **self.mapPersonas(response['account'])}
         return False
@@ -376,7 +376,7 @@ class Mediaset(rutils.RUtils):
             userSegmentation = self.getUserSegmentation(account)
             return {
                 'beToken': response['beToken'],
-                'beToken_ttl': staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration'])),
+                'beToken_ttl': staticutils.get_timestamp(staticutils.get_datetime_from_string(jsn['time'][0:26], '%Y-%m-%dT%H:%M:%S.%f') + staticutils.get_duration(milliseconds=response['duration'])),
                 'currentPersona': idPersona,
                 'accountType': 'account',
                 'clientId': userSegmentation['clientId'] if 'clientId' in userSegmentation else '',
