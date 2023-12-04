@@ -582,22 +582,26 @@ class KodiMediaset(object):
 
     def riproduci_video(self, guid=None, pid=None, publicUrl=None, live=False, offset=None):
         from inputstreamhelper import Helper  # pylint: disable=import-error
-        # kodiutils.log("Trying to get the video from pid %s" % pid)
         kodiutils.log('riproduci_video: guid={}, pid={}, live={}, offset={}'.format(guid,pid,live,offset))
+        
         data = self.med.OttieniDatiVideo(pid, publicUrl, live)
         kodiutils.log('riproduci_video: data={}'.format(str(data)))
+        
         if data['type'] == 'video/mp4':
             kodiutils.setResolvedUrl(data['url'])
             return
+        
         is_helper = Helper('mpd', 'com.widevine.alpha' if data['security'] else None)
         if not is_helper.check_inputstream():
             kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32133))
             kodiutils.setResolvedUrl(solved=False)
             return
-        headers = 'User-Agent={useragent}'.format(useragent=self.med.USERAGENT)
-        props = {'manifest_type': 'mpd', 'stream_headers': headers}
+        
+        headers = {}
+        ins_data = {}
         properties = {'ResumeTime': '0.0'}
         isAutenticated = False
+        
         scrobbling = kodiutils.getSettingAsNum('scrobbling')
         if scrobbling and not self.med.isAnonymous():
             properties['guid'] = guid
@@ -609,7 +613,7 @@ class KodiMediaset(object):
                         offset = self.med.getProgress(guid)
                         if offset:
                             properties['offset'] = str(offset)
-        kodiutils.log('riproduci_video: data2={}'.format(str(data)))
+ 
         if data['security']:
             # if self.med.isAnonymous():
             #     kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32134))
@@ -619,22 +623,19 @@ class KodiMediaset(object):
                 kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32135))
                 kodiutils.setResolvedUrl(solved=False)
                 return
-            kodiutils.log("riproduci_video data3: %s" % data)
-            headers += '&Accept=*/*&Content-Type='
-            props['license_type'] = 'com.widevine.alpha'
-            props['stream_headers'] = headers
-            url = self.med.OttieniWidevineAuthUrl(data['pid'])
-            kodiutils.log("riproduci_video url: %s" % url)
-            props['license_key'] = '{url}|{headers}|R{{SSM}}|'.format(url=url, headers=headers)
-            kodiutils.log("riproduci_video license_key: %s" % props['license_key'])
+            ins_data['license_type'] = 'com.widevine.alpha'
+            ins_data['manifest_type'] = 'mpd'
+            ins_data['stream_headers'] = 'User-Agent={useragent}&Accept=*/*'.format(useragent=self.med.USERAGENT)
+            ins_data['manifest_headers'] = 'User-Agent={useragent}&Accept=*/*'.format(useragent=self.med.USERAGENT)
+            ins_data['license_key'] = self.med.OttieniWidevineAuthUrl(data['pid'])
 
-        headers = {'user-agent': self.med.USERAGENT}
         kodiutils.log("riproduci_video url: %s" % data['url'])
         kodiutils.log("riproduci_video headers: %s" % headers)
         kodiutils.log("riproduci_video properties: %s" % properties)
-        kodiutils.log("riproduci_video props: %s" % props)
+        kodiutils.log("riproduci_video ins_data: %s" % ins_data)
+
         kodiutils.setResolvedUrl(data['url'], headers=headers, ins=is_helper.inputstream_addon,
-                                 insdata=props,properties=properties)
+                                 insdata=ins_data,properties=properties)
 
     def sliceParams(self, params, keys):
         return {key:params[key] for key in set(keys) & set(params)}

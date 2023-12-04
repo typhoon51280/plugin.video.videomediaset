@@ -12,7 +12,7 @@ class Mediaset(rutils.RUtils):
 
     USERAGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
     ACCEDO_ONE_KEY = "6023de431de1c4001877be3b"
-    APP_NAME = "generic-androidtv/12/mediasetplay-ctv"
+    APP_NAME = "web//mediasetplay-web"
 
     def __init__(self, account={}):
         self.log = kodiutils.log
@@ -886,7 +886,7 @@ class Mediaset(rutils.RUtils):
                 publicUrl += 'media/'
             publicUrl += pid
         publicUrl += ('?auto=true&balance=true&format=smil&formats=MPEG-DASH,MPEG4,M3U&tracking=true'
-                    '&assetTypes=HD,browser,widevine,geoIT|geoNo:HD,browser,geoIT|geoNo:HD,geoIT|geoNo:SD,browser,widevine,geoIT|geoNo:SD,browser,geoIT|geoNo:SD,geoIT|geoNo')
+                    '&assetTypes=HR,browser,widevine,geoIT|geoNo:HR,browser,geoIT|geoNo:SD,browser,widevine,geoIT|geoNo:SD,browser,geoIT|geoNo:SS,browser,widevine,geoIT|geoNo:SS,browser,geoIT|geoNo')
         text = self.getText(publicUrl)
         res = {'url': '', 'pid': '', 'type': '', 'security': False}
         root = ET.fromstring(text)
@@ -909,10 +909,8 @@ class Mediaset(rutils.RUtils):
              res['url'] = self.__create_url(res['url'],properties)
         return res
 
-    def OttieniWidevineAuthUrl(self, uid):
-        if self.isValidBeToken():
-            self.cts = self.getAccount()['beToken']
-        return (
-            'https://widevine.entitlement.theplatform.eu/wv/web/ModularDrm/getRawWidevineLicense?'
-            'releasePid={pid}&account=http://access.auth.theplatform.com/data/Account/'
-            '2702976343&schema=1.0&token={cts}').format(pid=uid, cts=self.cts)
+    def OttieniWidevineAuthUrl(self, pid):
+        token = self.getAccount()['beToken'] if self.isValidBeToken() else ''
+        url = 'https://widevine.entitlement.theplatform.eu/wv/web/ModularDrm/getRawWidevineLicense?releasePid={pid}&account=http://access.auth.theplatform.com/data/Account/2702976343&schema=1.0&token={token}'.format(pid=pid, token=token)
+        headers = 'Accept=*/*&Content-Type=&User-Agent={useragent}'.format(useragent=self.USERAGENT)
+        return '{url}|{headers}|{post_data}|'.format(url=url,headers=headers,post_data='R{SSM}')
