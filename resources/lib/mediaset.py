@@ -549,8 +549,9 @@ class Mediaset(rutils.RUtils):
             filtered = []
             for el in data:
                 name = str(el['name'].lower()) if 'name' in el else ''
-                if 'pageUri' in el and 'page_section' in el and (name.startswith('[pro]') or name.startswith('[mpi]')):
-                    key_pr = str(el['page_section'])
+                option = str(el['option'].lower()) if 'option' in el else ''
+                if name.startswith('[mpi]') and option.startswith('mediasetplay') and 'page_section' in el and 'noleggio' not in el['page_section']:
+                    key_pr = str(el['page_section']) if 'page_section' in el else str(el['title']).lower()
                     if key_pr in page_priority:
                         el['priority'] = page_priority[key_pr]
                     if not 'priority' in el:
@@ -878,15 +879,43 @@ class Mediaset(rutils.RUtils):
             return data
         return False
 
-    def OttieniDatiVideo(self, pid, publicUrl=None, live=False, properties=None):
-        if not publicUrl:
-            self.log('Trying to get video data from pid ' + pid, 4)
-            publicUrl = 'https://link.theplatform.eu/s/PR1GhC/'
-            if not live:
-                publicUrl += 'media/'
-            publicUrl += pid
-        publicUrl += ('?auto=true&balance=true&format=smil&formats=MPEG-DASH,MPEG4,M3U&tracking=true'
-                    '&assetTypes=HR,browser,widevine,geoIT|geoNo:HR,browser,geoIT|geoNo:SD,browser,widevine,geoIT|geoNo:SD,browser,geoIT|geoNo:SS,browser,widevine,geoIT|geoNo:SS,browser,geoIT|geoNo')
+    def PlaybackCheck(self, guid, live=False):
+        self.log('PlaybackCheck guid={guid}'.format(guid=guid), 4)
+        account = self.getAccount() or {}
+        url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/playback/check/v2.0'
+        params = {
+            'sid': account['sid'] if 'sid' in account else ''
+        }
+        data = {
+            "delivery": "Streaming",
+            "createDevice": "true",
+            "overrideAppName": self.APP_NAME
+        }
+        if live:
+            data['channelCode'] = guid
+            data['streamType'] = "LIVE"
+        else:
+            data['contentId'] = guid
+            data['streamType'] = "VOD"
+        jsn = self.getJson(url, json=data, headers=self.getAuthHeaders(), params=params)
+        self.log('PlaybackCheck jsn={jsn}'.format(jsn=str(jsn)), 4)
+        if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn and 'mediaSelector' in jsn['response']:
+            return jsn['response']['mediaSelector']
+        return False
+
+
+    def OttieniDatiVideo(self, guid, publicUrl=None, live=False, properties=None):
+        self.log('OttieniDatiVideo guid={guid}, publicUrl={publicUrl}'.format(guid=guid,publicUrl=publicUrl), 4)
+        if publicUrl:
+            publicUrl = self.__create_url(publicUrl, {'format': 'SMIL', 'tracking': 'true'})
+        else:
+            media = self.PlaybackCheck(guid, live)
+            media_url = media['publicUrl'] if 'publicUrl' in media else media['url']
+            media_args = {k:v for k,v in media.items() if k not in ('url','publicUrl','format')}
+            if 'format' in media:
+                media_args['format'] = 'SMIL' if 'SMIL' in media['format'] else media['format']
+            publicUrl =  self.__create_url(media_url, media_args)
+        self.log('OttieniDatiVideo publicUrl={publicUrl}'.format(publicUrl=publicUrl), 4)
         text = self.getText(publicUrl)
         res = {'url': '', 'pid': '', 'type': '', 'security': False}
         root = ET.fromstring(text)
@@ -894,6 +923,11 @@ class Mediaset(rutils.RUtils):
             ref = vid.find('./{http://www.w3.org/2005/SMIL21/Language}ref')
             res['url'] = ref.attrib['src']
             res['type'] = ref.attrib['type']
+            res['manifest'] = {
+                'manifest_type': 'mpd' if 'dash' in res['type'] else '',
+                'stream_headers': 'User-Agent={useragent}&Accept=*/*'.format(useragent=self.USERAGENT),
+                'manifest_headers': 'User-Agent={useragent}&Accept=*/*'.format(useragent=self.USERAGENT),
+            }
             if 'security' in ref.attrib and ref.attrib['security'] == 'commonEncryption':
                 res['security'] = True
             par = ref.find(
@@ -905,6 +939,7 @@ class Mediaset(rutils.RUtils):
                         res['pid'] = value
                         break
             break
+        self.log('OttieniDatiVideo res={res}'.format(res=str(res)), 4)
         if properties and 'url' in res:
              res['url'] = self.__create_url(res['url'],properties)
         return res

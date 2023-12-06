@@ -148,6 +148,13 @@ class KodiMediaset(object):
                 args['title'] = seriesTitle
                 menuItems = self.menuItems(isDeletable=isDeletable, delete_list=delete_list, item_id=item_id, guid=guid, context_ui=context_ui)
                 kodiutils.addListItem(title, args, videoInfo=infos, arts=arts, menuItems=menuItems)
+            elif 'programType' in prog and prog['programType'] == 'movie' and 'id_brand' in prog:
+                kodiutils.log('__analizza_elenco movie: {}'.format(str(prog)), 4)
+                item_id = prog['id_brand'] if prog['id_brand'] else ''
+                args['mode'] = 'programma'
+                args['brand_id'] = prog['id_brand']
+                menuItems = self.menuItems(isDeletable=isDeletable, delete_list=delete_list, item_id=item_id, guid=guid, context_ui=context_ui)
+                kodiutils.addListItem(infos["title"], args, videoInfo=infos, arts=arts, menuItems=menuItems)
             else:
                 kodiutils.log('__analizza_elenco other: {}'.format(str(prog)), 4)
                 item_id = prog['mediasetprogram$brandId'] if 'mediasetprogram$brandId' in prog and prog['mediasetprogram$brandId'] else ''
@@ -271,6 +278,7 @@ class KodiMediaset(object):
     def elenco_ondemand_root(self):
         arts = self.__getDirectoryArt()
         for item in self.med.OttieniOnDemand():
+            # kodiutils.log(('elenco_ondemand_root: item={}').format(str(item)), 4)
             kodiutils.addListItem(item["title"], {'mode': 'ondemand', 'id': item['_meta']['id']}, arts=arts)
         kodiutils.endScript()
 
@@ -584,7 +592,7 @@ class KodiMediaset(object):
         from inputstreamhelper import Helper  # pylint: disable=import-error
         kodiutils.log('riproduci_video: guid={}, pid={}, live={}, offset={}'.format(guid,pid,live,offset))
         
-        data = self.med.OttieniDatiVideo(pid, publicUrl, live)
+        data = self.med.OttieniDatiVideo(guid, publicUrl, live)
         kodiutils.log('riproduci_video: data={}'.format(str(data)))
         
         if data['type'] == 'video/mp4':
@@ -598,7 +606,8 @@ class KodiMediaset(object):
             return
         
         headers = {}
-        ins_data = {}
+        ins_data = data['manifest'] if 'manifest' in data else {}
+
         properties = {'ResumeTime': '0.0'}
         isAutenticated = False
         
@@ -624,9 +633,6 @@ class KodiMediaset(object):
                 kodiutils.setResolvedUrl(solved=False)
                 return
             ins_data['license_type'] = 'com.widevine.alpha'
-            ins_data['manifest_type'] = 'mpd'
-            ins_data['stream_headers'] = 'User-Agent={useragent}&Accept=*/*'.format(useragent=self.med.USERAGENT)
-            ins_data['manifest_headers'] = 'User-Agent={useragent}&Accept=*/*'.format(useragent=self.med.USERAGENT)
             ins_data['license_key'] = self.med.OttieniWidevineAuthUrl(data['pid'])
 
         kodiutils.log("riproduci_video url: %s" % data['url'])
