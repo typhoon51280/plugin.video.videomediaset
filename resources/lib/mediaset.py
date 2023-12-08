@@ -879,7 +879,7 @@ class Mediaset(rutils.RUtils):
             return data
         return False
 
-    def PlaybackCheck(self, guid, live=False):
+    def PlaybackCheck(self, guid, live=False, tuning=None):
         self.log('PlaybackCheck guid={guid}'.format(guid=guid), 4)
         account = self.getAccount() or {}
         url = 'https://api-ott-prod-fe.mediaset.net/PROD/play/playback/check/v2.0'
@@ -893,7 +893,7 @@ class Mediaset(rutils.RUtils):
         }
         if live:
             data['channelCode'] = guid
-            data['streamType'] = "LIVE"
+            data['streamType'] = "RESTART" if tuning=='restart' else 'LIVE'
         else:
             data['contentId'] = guid
             data['streamType'] = "VOD"
@@ -901,15 +901,25 @@ class Mediaset(rutils.RUtils):
         self.log('PlaybackCheck jsn={jsn}'.format(jsn=str(jsn)), 4)
         if jsn and 'isOk' in jsn and jsn['isOk'] and 'response' in jsn and 'mediaSelector' in jsn['response']:
             return jsn['response']['mediaSelector']
+        elif jsn and 'error' in jsn:
+            errorCode = jsn['error']['code'] if 'code' in jsn['error'] else ''
+            errorMsg = jsn['error']['message'] if 'message' in jsn['error'] else 'Errore riproduzione strean'
+            self.log('PlaybackCheck [{errorCode}]: {errorMsg}'.format(errorCode=errorCode,errorMsg=errorMsg), 1)
+            kodiutils.showOkDialog(errorCode,errorMsg)
+            # kodiutils.notify(errorMsg, icon=kodiutils.getMedia('notify.png'))
         return False
 
-
-    def OttieniDatiVideo(self, guid, publicUrl=None, live=False, properties=None):
+    def OttieniDatiVideo(self, guid, publicUrl=None, live=False, tuning=None, properties=None):
         self.log('OttieniDatiVideo guid={guid}, publicUrl={publicUrl}'.format(guid=guid,publicUrl=publicUrl), 4)
-        if publicUrl:
-            publicUrl = self.__create_url(publicUrl, {'format': 'SMIL', 'tracking': 'true'})
+        if not guid and publicUrl:
+            publicUrl = self.__create_url(publicUrl, {
+                'format': 'SMIL',
+                'tracking': 'true'
+                })
         else:
-            media = self.PlaybackCheck(guid, live)
+            media = self.PlaybackCheck(guid, live, tuning)
+            if not media:
+                return False
             media_url = media['publicUrl'] if 'publicUrl' in media else media['url']
             media_args = {k:v for k,v in media.items() if k not in ('url','publicUrl','format')}
             if 'format' in media:

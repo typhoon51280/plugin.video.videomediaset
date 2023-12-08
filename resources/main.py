@@ -293,7 +293,7 @@ class KodiMediaset(object):
             if "uxReferenceV2" in sec:
                 kodiutils.log(('elenco_ondemand uxReferenceV2: {}').format(str(sec)), 4)
                 additionalParams = sec['uxReferenceV2Params'] if 'uxReferenceV2Params' in sec else None
-                kodiutils.addListItem(sec["title"], {'mode': 'sezione', 'id': sec['uxReferenceV2'], 'additionalParams': additionalParams}, arts=arts)
+                kodiutils.addListItem(sec["title"], {'mode': 'sezione', 'id': sec['uxReferenceV2'], 'params': additionalParams}, arts=arts)
             elif "uxReference" in sec:
                 kodiutils.log(('elenco_ondemand uxReference: {}').format(str(sec)), 4)
                 kodiutils.addListItem(sec["title"], {'mode': 'sezione', 'id': sec['uxReference']}, arts=arts)
@@ -350,17 +350,17 @@ class KodiMediaset(object):
         self.__analizza_elenco(els, True)
         kodiutils.endScript()
 
-    def elenco_sezione(self, id, page=0, params=None, sort=None, order=None, size=20):
-        kodiutils.log("[main] elenco_sezione: id={},page={},sort={},order={}".format(str(id),str(page),str(sort),str(order)))
+    def elenco_sezione(self, id, page=0, params='', sort=None, order=None, size=20):
+        kodiutils.log("[main] elenco_sezione: id={},params={},page={},sort={},order={}".format(str(id),str(params),str(page),str(sort),str(order)))
         els, hasmore = self.med.OttieniProgrammiGenere(id, size, page, params, sort, order)
         kodiutils.log('elenco_sezione size={},hasmore={}: {}'.format(str(size), str(hasmore), str(els)), 4)
         update_listing = int(page) > 0 if page else False
         page = int(page) if page else 1
         if els:
             if hasmore:
-                kodiutils.addListItem(kodiutils.LANGUAGE(32130), {'mode': 'sezione', 'id': id, 'page': page + 1}, properties={'SpecialSort': 'top'}, arts=self.__getForwardArt())
+                kodiutils.addListItem(kodiutils.LANGUAGE(32130), {'mode': 'sezione', 'id': id, 'params': params, 'page': page + 1}, properties={'SpecialSort': 'top'}, arts=self.__getForwardArt())
             if page>1:
-                kodiutils.addListItem(kodiutils.LANGUAGE(32129), {'mode': 'sezione', 'id': id, 'page': page - 1}, properties={'SpecialSort': 'top'}, arts=self.__getBackwardArt())
+                kodiutils.addListItem(kodiutils.LANGUAGE(32129), {'mode': 'sezione', 'id': id, 'params': params,'page': page - 1}, properties={'SpecialSort': 'top'}, arts=self.__getBackwardArt())
             self.__analizza_elenco(els, True)
             # else:
             #     kodiutils.addListItem('Ordina {}'.format('DESC' if sort and order == 'asc' else 'ASC'), {
@@ -536,12 +536,13 @@ class KodiMediaset(object):
                 showTitle = str(prog['mediasetlisting$epgTitle'])
                 episodeTitle = str(program['title']) if programType != 'movie' and program['title'] != prog['mediasetlisting$epgTitle'] else ""
                 infos['title'] = "[COLOR blue][B]{channel}[/B][/COLOR] [COLOR cyan]{showTitle}[/COLOR] [I]{episodeTitle}[/I]".format(showTitle=showTitle, channel=chan['title'], episodeTitle=episodeTitle)
-                data = {'mode': 'live'}
+                data = {'mode': 'live', 'guid': callSign}
                 if 'mediasetlisting$restartAllowed' in prog and prog['mediasetlisting$restartAllowed'] and kodiutils.getSettingAsBool('splitlive'):
-                    data['guid'] = callSign
+                    data['tuning'] = 'split'
                 else:
+                    data['tuning'] = 'live'
                     data['publicUrl'] = liveChannel['publicUrl']
-                kodiutils.addListItem(infos['title'], data, videoInfo=infos, arts=arts, isFolder=('guid' in data))
+                kodiutils.addListItem(infos['title'], data, videoInfo=infos, arts=arts, isFolder=(data['tuning']=='split'))
         kodiutils.endScript()
 
     def __ottieni_vid_restart(self, guid):
@@ -572,10 +573,10 @@ class KodiMediaset(object):
             
             title = infos['title']
             infos['title'] = '([COLOR green]{}[/COLOR]) {}'.format(kodiutils.LANGUAGE(32137),title)
-            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': liveChannel['publicUrl']}, properties={'ResumeTime': '0.0'}, videoInfo=infos, arts=arts, isFolder=False)
+            kodiutils.addListItem(infos['title'], {'mode': 'live', 'guid': guid, 'tuning': 'live'}, properties={'ResumeTime': '0.0'}, videoInfo=infos, arts=arts, isFolder=False)
 
             infos['title'] = '([COLOR yellow]{}[/COLOR]) {}'.format(kodiutils.LANGUAGE(32138),title)
-            kodiutils.addListItem(infos['title'], {'mode': 'live', 'publicUrl': prog['restartUrl']}, properties={'ResumeTime': '0.0'}, videoInfo=infos, arts=arts, isFolder=False)
+            kodiutils.addListItem(infos['title'], {'mode': 'live', 'guid': guid, 'tuning': 'restart'}, properties={'ResumeTime': '0.0'}, videoInfo=infos, arts=arts, isFolder=False)
 
         kodiutils.endScript()
 
@@ -588,12 +589,17 @@ class KodiMediaset(object):
             return
         self.riproduci_video(guid=guid, pid=res['media'][0]['pid'], offset=offset)
 
-    def riproduci_video(self, guid=None, pid=None, publicUrl=None, live=False, offset=None):
+    def riproduci_video(self, guid=None, pid=None, publicUrl=None, live=False, offset=None, tuning=None):
         from inputstreamhelper import Helper  # pylint: disable=import-error
         kodiutils.log('riproduci_video: guid={}, pid={}, live={}, offset={}'.format(guid,pid,live,offset))
         
-        data = self.med.OttieniDatiVideo(guid, publicUrl, live)
+        data = self.med.OttieniDatiVideo(guid, publicUrl, live, tuning)
         kodiutils.log('riproduci_video: data={}'.format(str(data)))
+
+        if not (data and 'url' in data):
+            # kodiutils.showOkDialog(kodiutils.LANGUAGE(32132), kodiutils.LANGUAGE(32133))
+            kodiutils.setResolvedUrl(solved=False)
+            return
         
         if data['type'] == 'video/mp4':
             kodiutils.setResolvedUrl(data['url'])
@@ -667,7 +673,7 @@ class KodiMediaset(object):
                 else:
                     self.elenco_cerca_root()
             elif params['mode'] == "sezione":
-                self.elenco_sezione(**self.sliceParams(params, ('id','page','sort','order')))
+                self.elenco_sezione(**self.sliceParams(params, ('id','params','page','sort','order')))
             elif params['mode'] == "ondemand":
                 if 'id' in params:
                     self.elenco_ondemand(**self.sliceParams(params, ('id','template','sort','order')))
@@ -696,12 +702,10 @@ class KodiMediaset(object):
                 else:
                     self.riproduci_guid(**self.sliceParams(params, ('guid','offset')))
             elif params['mode'] == "live":
-                if 'publicUrl' in params:
-                    self.riproduci_video(publicUrl=params['publicUrl'], live=True)
-                if 'id' in params:
-                    self.riproduci_video(pid=params['id'], live=True)
-                else:
+                if 'tuning' in params and params['tuning']=='split':
                     self.canali_live_play(params['guid'])
+                else:
+                    self.riproduci_video(live=True, **self.sliceParams(params, ('guid','pid','publicUrl','tuning')))
             elif params['mode'] == "tv":
                 self.tv_root()
             elif params['mode'] == "personal":
