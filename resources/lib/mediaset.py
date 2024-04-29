@@ -1,12 +1,12 @@
-import time
+from pprint import pformat
 import uuid
 import xml.etree.ElementTree as ET
-from phate89lib import kodiutils, rutils, staticutils  # pyright: reportMissingImports=false
+from phate89lib import kodiutils, rutils, staticutils  # pyright: ignore[reportMissingImports]
 
 try:
-    from urllib.parse import urlencode, quote
+    from urllib.parse import urlencode
 except ImportError:
-    from urllib import urlencode, quote
+    from urllib import urlencode  # pyright: ignore
 
 
 class Mediaset(rutils.RUtils):
@@ -15,18 +15,19 @@ class Mediaset(rutils.RUtils):
     ACCEDO_ONE_URL = (
         "https://cdn.contentful.com/spaces/300p17pg01ig/environments/master/entries"
     )
+    ACCEDO_ONE_KEY = "oDJs8g80NqvBgoryiij6Jx5wWYFKs4u-lGb3gQOIq-A"
     APP_NAME = "web//mediasetplay-web"
 
-    def __init__(self, account={}):
+    def __init__(self):
         self.log = kodiutils.log
-        self.__UID = ""
-        self.__UIDSignature = ""
-        self.__signatureTimestamp = ""
+        # self.__UID = ""
+        # self.__UIDSignature = ""
+        # self.__signatureTimestamp = ""
         self.apigw = ""
         self.cts = ""
         self.__tracecid = ""
         self.__cwid = ""
-        self.__deviceid = str(uuid.uuid4())
+        # self.__deviceid = str(uuid.uuid4())
         self.expires_at = 0.0
         self.uxReferenceMapping = {
             "CWDOCUBIOSTORIE": "documentariBioStoria",
@@ -178,7 +179,7 @@ class Mediaset(rutils.RUtils):
     def getCurrentPersona(self):
         currentPersona = self.getAccount("currentPersona")
         if currentPersona:
-            personas = self.getPersonas(currentPersona)
+            personas = self.getPersonas(currentPersona) or []
             if len(personas) == 1:
                 return personas[0]
         return None
@@ -220,7 +221,7 @@ class Mediaset(rutils.RUtils):
         )
 
     def isSessionValid(self):
-        account = self.getAccount()
+        account = self.getAccount() or {}
         return (
             "sessionKey" in account
             and "sessionKey_ttl" in account
@@ -245,7 +246,7 @@ class Mediaset(rutils.RUtils):
 
     def isPaired(self):
         if self.isValidCaToken():
-            personas = self.getPersonas()
+            personas = self.getPersonas() or []
             return len(personas) > 0
         return False
 
@@ -270,31 +271,31 @@ class Mediaset(rutils.RUtils):
     def logout(self):
         return {}
 
-    @kodiutils.store("account")
-    def getSessionKey(self, account={}):
-        res = self.getJson(
-            self.__create_url(
-                "https://api.one.accedo.tv/session",
-                args={"appKey": self.ACCEDO_ONE_KEY, "uuid": str(uuid.uuid4())},
-            )
-        )
-        if res and "sessionKey" in res and "expiration" in res:
-            return {
-                "sessionKey": res["sessionKey"],
-                "sessionKey_ttl": staticutils.get_timestamp(
-                    staticutils.get_datetime_from_string(
-                        res["expiration"][0:17] + "Z", "%Y%m%dT%H:%M:%S%z"
-                    )
-                ),
-            }
-        return None
+    # @kodiutils.store("account")
+    # def getSessionKey(self, account={}):
+    #     res = self.getJson(
+    #         self.__create_url(
+    #             "https://api.one.accedo.tv/session",
+    #             args={"appKey": self.ACCEDO_ONE_KEY, "uuid": str(uuid.uuid4())},
+    #         )
+    #     )
+    #     if res and "sessionKey" in res and "expiration" in res:
+    #         return {
+    #             "sessionKey": res["sessionKey"],
+    #             "sessionKey_ttl": staticutils.get_timestamp(
+    #                 staticutils.get_datetime_from_string(
+    #                     res["expiration"][0:17] + "Z", "%Y%m%dT%H:%M:%S%z"
+    #                 )
+    #             ),
+    #         }
+    #     return None
 
     def getSessionHeaders(self, headers={}):
         # if not self.isSessionValid():
         #     self.getSessionKey()
         # if self.isSessionValid():
         #     headers['x-session'] = self.getAccount('sessionKey')
-        headers["Authorization"] = "oDJs8g80NqvBgoryiij6Jx5wWYFKs4u-lGb3gQOIq-A"
+        headers["Authorization"] = "Bearer {}".format(self.ACCEDO_ONE_KEY)
         return headers
 
     @kodiutils.store("account", inject=False)
@@ -470,7 +471,7 @@ class Mediaset(rutils.RUtils):
         }
         return self.getJson(url, headers=self.getAuthHeaders(), params=params)
 
-    def userInfo(self, caToken, idPersona):
+    def userInfo(self):
         url = (
             "https://api-ott-prod-fe.mediaset.net/PROD/play/comm/syntheticuserinfo/v2.0"
         )
@@ -506,6 +507,9 @@ class Mediaset(rutils.RUtils):
         }
 
     def mapPersonas(self, account={}):
+        accountId = ""
+        default_persona = ""
+        personas = None
         if "id" in account:
             accountId = account["id"]
         if "accountSettings" in account and "default" in account["accountSettings"]:
@@ -539,14 +543,34 @@ class Mediaset(rutils.RUtils):
                 hasMore = data["total"] < data["skip"] + data["limit"]
             if "entries" in data:
                 return data["entries"], hasMore
-            elif "includes" in data:
-                return data["includes"], hasMore
+            elif "includes" in data and "Entry" in data["includes"]:
+                return list(
+                    map(
+                        lambda x: {
+                            **x["fields"],
+                            "id": x["sys"]["id"],
+                            "type": x["sys"]["type"],
+                            "contentType": x["sys"]["contentType"]["sys"]["id"],
+                        },
+                        data["includes"]["Entry"],
+                    )
+                ), hasMore
             elif "items" in data:
-                return data["items"], hasMore
+                return list(
+                    map(
+                        lambda x: {
+                            **x["fields"],
+                            "id": x["sys"]["id"],
+                            "type": x["sys"]["type"],
+                            "contentType": x["sys"]["contentType"]["sys"]["id"],
+                        },
+                        data["items"],
+                    )
+                ), hasMore
         return data, hasMore
 
     def __getElsFromUrl(self, url, headers={}):
-        result = None
+        result = []
         hasMore = False
         data = self.getJson(url, headers=headers)
         kodiutils.log("__getElsFromUrl: {}".format(str(data)), 4)
@@ -589,40 +613,50 @@ class Mediaset(rutils.RUtils):
                 result = data["entries"]
         return result, hasMore
 
-    def __getsectionsFromEntryID(self, eid):
-        jsn = self.getJson(
-            self.__create_url(
-                "https://api.one.accedo.tv/content/entry/{eid}",
-                args={"locale": "it"},
-                path={"eid": eid},
-            ),
-            headers=self.getSessionHeaders(),
+    def __getSectionsFromEntryID(self, eid):
+        args = {
+            "sys.id": eid,
+            "include": "1",
+            "limit": 100,
+            "skip": 0,
+        }
+        data, _ = self.__getEntriesFromUrl(
+            self.ACCEDO_ONE_URL, args, headers=self.getSessionHeaders()
         )
-        if jsn and "components" in jsn:
-            entries = []
-            result = []
-            components = jsn["components"]
-            total = len(components)
-            idx = 0
-            self.log("components: " + str(total), 4)
-            for idx in range(total):
-                entries.append(components[idx])
-                if (idx + 1) % 20 == 0 or idx + 1 == total:
-                    eid = ",".join(entries)
-                    self.log("eid: " + str(eid), 4)
-                    del entries[:]
-                    jsn = self.getJson(
-                        self.__create_url(
-                            "https://api.one.accedo.tv/content/entries",
-                            args={"id": eid, "locale": "it"},
-                        ),
-                        headers=self.getSessionHeaders(),
-                    )
-                    if jsn and "entries" in jsn:
-                        result.extend(jsn["entries"])
-            # self.log('result: ' + str(len(result)), 4)
-            return result
-        return False
+        return data or False
+        # jsn = self.getJson(
+        #     self.__create_url(
+        #         "https://api.one.accedo.tv/content/entry/{eid}",
+        #         args={"locale": "it"},
+        #         path={"eid": eid},
+        #     ),
+        #     headers=self.getSessionHeaders(),
+        # )
+        # if jsn and "components" in jsn:
+        #     entries = []
+        #     result = []
+        #     components = jsn["components"]
+        #     total = len(components)
+        #     idx = 0
+        #     self.log("components: " + str(total), 4)
+        #     for idx in range(total):
+        #         entries.append(components[idx])
+        #         if (idx + 1) % 20 == 0 or idx + 1 == total:
+        #             eid = ",".join(entries)
+        #             self.log("eid: " + str(eid), 4)
+        #             del entries[:]
+        #             jsn = self.getJson(
+        #                 self.__create_url(
+        #                     "https://api.one.accedo.tv/content/entries",
+        #                     args={"id": eid, "locale": "it"},
+        #                 ),
+        #                 headers=self.getSessionHeaders(),
+        #             )
+        #             if jsn and "entries" in jsn:
+        #                 result.extend(jsn["entries"])
+        #     # self.log('result: ' + str(len(result)), 4)
+        #     return result
+        # return False
 
     def __createMediasetUrl(
         self, base, pageels=None, page=None, args=None, passkeys=True
@@ -651,28 +685,28 @@ class Mediaset(rutils.RUtils):
             return url + urlencode(args, safe=",")
         return url + "?" + urlencode(args, safe=",")
 
-    def __createAZUrl(
-        self, categories=None, query=None, inonda=None, pageels=100, page=None
-    ):
-        args = {"query": query if query else "*:*"}
-
-        if categories is not None:
-            args["categories"] = ",".join(categories)
-        if inonda is not None:
-            args["inOnda"] = str(inonda).lower()
-        return self.__createMediasetUrl(
-            "https://api-ott-prod-fe.mediaset.net/PROD/play/rec/azlisting/v1.0?",
-            pageels,
-            page,
-            args,
-        )
+    # def __createAZUrl(
+    #     self, categories=None, query=None, inonda=None, pageels=100, page=None
+    # ):
+    #     args = {"query": query if query else "*:*"}
+    #
+    #     if categories is not None:
+    #         args["categories"] = ",".join(categories)
+    #     if inonda is not None:
+    #         args["inOnda"] = str(inonda).lower()
+    #     return self.__createMediasetUrl(
+    #         "https://api-ott-prod-fe.mediaset.net/PROD/play/rec/azlisting/v1.0?",
+    #         pageels,
+    #         page,
+    #         args,
+    #     )
 
     def OttieniOnDemand(self):
         self.log("Trying to get the sections list for ondemand", 4)
-        # args = {'locale': 'it', 'offset': '0', 'size': '50', 'typeAlias': 'page-browse'}
         args = {
-            "content_type": "pageHome",
+            "content_type": "page",
             "fields.option": "MediasetPlay",
+            "fields.searchable": "true",
             "include": "0",
             "skip": "0",
             "limit": "50",
@@ -680,37 +714,62 @@ class Mediaset(rutils.RUtils):
         data, _ = self.__getEntriesFromUrl(
             self.ACCEDO_ONE_URL, args, headers=self.getSessionHeaders()
         )
+        # self.log("OttieniOnDemand data={}".format(pformat(data)), 4)
         if data:
-            self.log("data: {}".format(data), 4)
-            # page_priority = {'programmitv': '0001', 'family': '0002',  'fiction': '0003', 'film': '0004',  'kids': '0005', 'documentari': '0006'}
-            # filtered = []
-            for el in data:
-                fields = el["fields"] if "fields" in el else {}
-                name = str(fields["name"].lower()) if "name" in fields else ""
-                # option = str(el['option'].lower()) if 'option' in el else ''
-                if name.startswith(
-                    "[mpi]"
-                ):  # and option.startswith('mediasetplay') and 'page_section' in el and 'noleggio' not in el['page_section']:
-                    return self.O
-            #         key_pr = str(el['page_section']) if 'page_section' in el else str(el['title']).lower()
-            #         if key_pr in page_priority:
-            #             el['priority'] = page_priority[key_pr]
-            #         if not 'priority' in el:
-            #              el['priority'] = '9999' + '_' + el['title']
-            #         filtered.append(el)
-            # return sorted(filtered, key=lambda k: k['priority'] if 'priority' in k else k['title'])
-        return None
+            page_priority = {
+                "programmitv": "0001",
+                "fiction": "0002",
+                "cinema": "0003",
+                "news-e-sport": "0004",
+                "documentari": "0005",
+                "kids": "0006",
+                "esg-ambiente-e-societa": "0007",
+                "italia-da-scoprire": "0008",
+                "magazine": "0009",
+            }
+            page_exclude = [
+                "silvio-berlusconi",
+                "noleggio",
+            ]
+            data = [
+                (
+                    next(
+                        (
+                            priority
+                            for pageUrl, priority in page_priority.items()
+                            if pageUrl in item["pageUrl"]
+                        ),
+                        "9999",
+                    ),
+                    item["title"].lower(),
+                    i,
+                    item,
+                )
+                for i, item in enumerate(data)
+                if item["name"].lower().startswith("[mpi]")
+                and not any(pageUrl in item["pageUrl"] for pageUrl in page_exclude)
+            ]
+            data.sort()
+            # for item in data:
+            #     self.log(
+            #         "data item >>>>> pageUrl={}, priority={}, title={}, index={}".format(
+            #             item[3]["pageUrl"], item[0], item[1], item[2]
+            #         )
+            #     )
+            return [item for _, _, _, item in data or []]
+        return []
 
     def OttieniOnDemandGeneri(self, id, sort=None, order="asc"):
         self.log("Trying to get the sections list for ondemand section: " + id, 4)
-        data = self.__getsectionsFromEntryID(id)
+        data = self.__getSectionsFromEntryID(id)
+        self.log("OttieniOnDemandGeneri data={}".format(pformat(data)), 4)
         if data and sort:
             return sorted(
                 data,
                 key=lambda k: k[sort] if k and sort in k else "",
                 reverse=(not order == "asc"),
             )
-        return data
+        return data or []
 
     def OttieniMagazine(self, newsFeedUrl, iperpage=None):
         self.log(
@@ -750,7 +809,7 @@ class Mediaset(rutils.RUtils):
         return els
 
     def OttieniCult(self, feedurl, iperpage=None):
-        if iperpage and not "range" in feedurl:
+        if iperpage and "range" not in feedurl:
             if "?" in feedurl:
                 feedurl = "{}&range={}-{}".format(feedurl, 1, iperpage)
             else:
@@ -927,7 +986,7 @@ class Mediaset(rutils.RUtils):
         self, gid, pageels=20, page=None, params=None, sort=None, order="asc"
     ):
         self.log("Trying to get the programs from section id " + gid, 4)
-        account = self.getAccount()
+        account = self.getAccount() or {}
         args = {
             "uxReference": self.uxMapping(gid),
             "property": "play",
@@ -1012,7 +1071,7 @@ class Mediaset(rutils.RUtils):
         return self.__getEntriesFromUrl(url, args=args)
 
     def Cerca(self, query, channel="", section="", pageels=100, page=None):
-        account = self.getAccount()
+        account = self.getAccount() or {}
         args = {
             "tenant": "play-prod-v2",
             "property": "search",
@@ -1060,11 +1119,9 @@ class Mediaset(rutils.RUtils):
             passkeys=False,
         )
         res = self.__getEntriesFromUrl(url)
-        if res is not None:
-            if res and res[0]:
-                return res[0][0]
-            return {}
-        return res
+        if res and res[0] and isinstance(res[0], list):
+            return res[0][0]
+        return {}
 
     def OttieniProgrammiLive(self, sort=None):
         self.log("Trying to get the live programs", 4)
@@ -1269,8 +1326,8 @@ class Mediaset(rutils.RUtils):
         root = ET.fromstring(text)
         for vid in root.findall(".//{http://www.w3.org/2005/SMIL21/Language}switch"):
             ref = vid.find("./{http://www.w3.org/2005/SMIL21/Language}ref")
-            res["url"] = ref.attrib["src"]
-            res["type"] = ref.attrib["type"]
+            res["url"] = ref.attrib["src"]  # pyright: ignore
+            res["type"] = ref.attrib["type"]  # pyright: ignore
             res["manifest"] = {
                 "manifest_type": "mpd" if "dash" in res["type"] else "",
                 "stream_headers": "User-Agent={useragent}&Accept=*/*".format(
@@ -1281,11 +1338,11 @@ class Mediaset(rutils.RUtils):
                 ),
             }
             if (
-                "security" in ref.attrib
-                and ref.attrib["security"] == "commonEncryption"
+                "security" in ref.attrib  # pyright: ignore
+                and ref.attrib["security"] == "commonEncryption"  # pyright: ignore
             ):
                 res["security"] = True
-            par = ref.find(
+            par = ref.find(  # pyright: ignore
                 './{http://www.w3.org/2005/SMIL21/Language}param[@name="trackingData"]'
             )
             if par is not None:
@@ -1301,7 +1358,8 @@ class Mediaset(rutils.RUtils):
         return res
 
     def OttieniWidevineAuthUrl(self, pid):
-        token = self.getAccount()["beToken"] if self.isValidBeToken() else ""
+        account = self.getAccount() or {}
+        token = account["beToken"] if self.isValidBeToken() else ""
         url = "https://widevine.entitlement.theplatform.eu/wv/web/ModularDrm/getRawWidevineLicense?releasePid={pid}&account=http://access.auth.theplatform.com/data/Account/2702976343&schema=1.0&token={token}".format(
             pid=pid, token=token
         )
