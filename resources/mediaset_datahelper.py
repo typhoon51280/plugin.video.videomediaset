@@ -39,7 +39,12 @@ def _gather_media_type(prog):
         and prog["mediasetprogram$brandVerticalSiteCMS"] == "fiction"
     ):
         return "tvshow"
-    if "tvSeasonNumber" in prog or "tvSeasonEpisodeNumber" in prog:
+    if (
+        "tvSeasonNumber" in prog
+        and "tvSeasonEpisodeNumber" in prog
+        and prog["tvSeasonNumber"]
+        and prog["tvSeasonEpisodeNumber"]
+    ):
         return "episode"
     if "seriesId" in prog and "mediasetprogram$subBrandId" not in prog:
         return "tvshow"
@@ -48,6 +53,8 @@ def _gather_media_type(prog):
         or prog["mediasetprogram$subBrandDescription"].lower() == "documentario"
     ):
         return "movie"
+    if "_blockId" in prog:
+        return ""
     return "video"
 
 
@@ -198,7 +205,7 @@ def _gather_info(prog, titlewd=False, mediatype=None, infos=None, lookup_fullplo
     if "program" in prog:
         return _gather_info(prog["program"], titlewd=titlewd, infos=infos)
 
-    return __normalize(infos)
+    return dict(__normalize(infos))
 
 
 def _gather_art(prog):
@@ -298,7 +305,7 @@ def _gather_art(prog):
             arts["clearart"] = keyframe
             arts["banner"] = keyframe
 
-    return __normalize(arts)
+    return dict(__normalize(arts))
 
 
 def __findImg(images, names):
@@ -312,7 +319,7 @@ def __findImgMax(el):
     data = el["data"] if "data" in el else {}
     if "i" in data and "p" in data:
         baseUrl = data["p"] or ""
-        images = data["i"] or {}
-        imgPath = max(images, key=images.get) or ""
-        return "{}{}".format(baseUrl, images[imgPath])
+        images = sorted((data["i"] or {}).items())
+        if images and images[-1]:
+            return "{}{}".format(baseUrl, images[-1][-1])
     return ""

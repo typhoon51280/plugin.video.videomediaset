@@ -573,7 +573,7 @@ class Mediaset(rutils.RUtils):
         result = []
         hasMore = False
         data = self.getJson(url, headers=headers)
-        kodiutils.log("__getElsFromUrl: {}".format(str(data)), 4)
+        # kodiutils.log("__getElsFromUrl: {}".format(str(data)), 4)
         if data and "isOk" in data and data["isOk"]:
             if "response" in data:
                 response = data["response"]
@@ -584,13 +584,13 @@ class Mediaset(rutils.RUtils):
                         "Timeout caricamento dati",
                         icon=kodiutils.getMedia("notify.png"),
                     )
-                    return [], None
+                    return [], False
                 if "hasMore" in response:
-                    hasMore = response["hasMore"]
+                    hasMore = response["hasMore"] or False
                 elif (
                     "pagination" in response and "hasNextPage" in response["pagination"]
                 ):
-                    hasMore = response["pagination"]["hasNextPage"]
+                    hasMore = response["pagination"]["hasNextPage"] or False
                 elif "pagination" in metadata:
                     pagination = metadata["pagination"]
                     hitsPerPage = (
@@ -602,11 +602,14 @@ class Mediaset(rutils.RUtils):
                         int(pagination["totalHits"]) if "totalHits" in pagination else 0
                     )
                     if totalHits and totalHits == hitsPerPage:
-                        hasMore = totalHits
+                        hasMore = True
                 if "entries" in response:
                     result = response["entries"]
                 elif "blocks" in response:
-                    result = response["blocks"][0]["items"]
+                    if len(response["blocks"]) == 1:
+                        result = response["blocks"][0]["items"]
+                    else:
+                        result = response["blocks"]
                 else:
                     result = response
             elif "entries" in data:
@@ -676,7 +679,7 @@ class Mediaset(rutils.RUtils):
         return self.__create_url(base, args)
 
     def __create_url(self, url, args=None, path=None):
-        self.log("args {}".format(args), 4)
+        # self.log("args {}".format(args), 4)
         if path:
             url = url.format(**path)
         if args is None:
@@ -760,15 +763,29 @@ class Mediaset(rutils.RUtils):
         return []
 
     def OttieniOnDemandGeneri(self, id, sort=None, order="asc"):
-        self.log("Trying to get the sections list for ondemand section: " + id, 4)
+        self.log(
+            "Trying to get the sections list for ondemand: section={}, sort={}, order={}".format(
+                id, sort, order
+            ),
+            4,
+        )
         data = self.__getSectionsFromEntryID(id)
-        self.log("OttieniOnDemandGeneri data={}".format(pformat(data)), 4)
-        if data and sort:
-            return sorted(
-                data,
-                key=lambda k: k[sort] if k and sort in k else "",
-                reverse=(not order == "asc"),
-            )
+        # self.log("OttieniOnDemandGeneri data={}".format(pformat(data)), 4)
+        if data:
+            if sort:
+                return sorted(
+                    data,
+                    key=lambda k: k[sort] if k and sort in k else "",
+                    reverse=(not order == "asc"),
+                )
+            else:
+                data = [
+                    (0 if "title" in item else 1, i, item)
+                    for i, item in enumerate(data)
+                    if "nolegg" not in item["name"]
+                ]
+                data.sort()
+                return [item for _, _, item in data]
         return data or []
 
     def OttieniMagazine(self, newsFeedUrl, iperpage=None):
@@ -983,17 +1000,29 @@ class Mediaset(rutils.RUtils):
 
     # @kodiutils.cacheable(hours=24)
     def OttieniProgrammiGenere(
-        self, gid, pageels=20, page=None, params=None, sort=None, order="asc"
+        self,
+        id="",
+        searchParams={},
+        pageels=20,
+        page=None,
+        params=None,
+        sort=None,
+        order="asc",
     ):
-        self.log("Trying to get the programs from section id " + gid, 4)
+        self.log("Trying to get the programs from section id " + id, 4)
         account = self.getAccount() or {}
         args = {
-            "uxReference": self.uxMapping(gid),
-            "property": "play",
-            "tenant": "play-prod-v2",
-            "sessionId": account["sid"],
-            "userContext": account["userContext"] if "userContext" in account else "",
-            "clientId": account["clientId"] if "clientId" in account else "",
+            **{
+                "uxReference": self.uxMapping(id),
+                "property": "play",
+                "tenant": "play-prod-v2",
+                "sessionId": account["sid"],
+                "userContext": account["userContext"]
+                if "userContext" in account
+                else "",
+                "clientId": account["clientId"] if "clientId" in account else "",
+            },
+            **searchParams,
         }
         if params:
             args["params"] = params
