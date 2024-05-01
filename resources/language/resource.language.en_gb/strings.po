@@ -78,6 +78,18 @@ msgctxt "#32015"
 msgid "Cache Memory"
 msgstr "Cache Memory"
 
+msgctxt "#32016"
+msgid "Ordinamento di default"
+msgstr "Ordinamento di default"
+
+msgctxt "#32017"
+msgid "ASC"
+msgstr "ASC"
+
+msgctxt "#32018"
+msgid "DESC"
+msgstr "DESC"
+
 msgctxt "#32101"
 msgid "Tutto A-Z"
 msgstr "All A-Z"
