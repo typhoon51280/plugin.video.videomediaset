@@ -23,6 +23,7 @@
         <news>3.0.0 beta5
       - fixed OnDemand sections: auth and order
       - added arts to OnDemand sections
+      - fixed Cult and Magazine
         </news>
         <assets>
             <icon>resources/media/icon.png</icon>
