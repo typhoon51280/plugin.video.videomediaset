@@ -540,7 +540,7 @@ class Mediaset(rutils.RUtils):
                     <= (pagination["offset"] + 1) * pagination["size"]
                 )
             elif "limit" in data and "total" in data and "skip" in data:
-                hasMore = data["total"] < data["skip"] + data["limit"]
+                hasMore = data["skip"] + data["limit"] < data["total"]
             if "entries" in data:
                 return data["entries"], hasMore
             elif "includes" in data and "Entry" in data["includes"]:
@@ -616,50 +616,17 @@ class Mediaset(rutils.RUtils):
                 result = data["entries"]
         return result, hasMore
 
-    def __getSectionsFromEntryID(self, eid):
-        args = {
-            "sys.id": eid,
-            "include": "1",
-            "limit": 100,
-            "skip": 0,
-        }
-        data, _ = self.__getEntriesFromUrl(
-            self.ACCEDO_ONE_URL, args, headers=self.getSessionHeaders()
-        )
-        return data or False
-        # jsn = self.getJson(
-        #     self.__create_url(
-        #         "https://api.one.accedo.tv/content/entry/{eid}",
-        #         args={"locale": "it"},
-        #         path={"eid": eid},
-        #     ),
-        #     headers=self.getSessionHeaders(),
-        # )
-        # if jsn and "components" in jsn:
-        #     entries = []
-        #     result = []
-        #     components = jsn["components"]
-        #     total = len(components)
-        #     idx = 0
-        #     self.log("components: " + str(total), 4)
-        #     for idx in range(total):
-        #         entries.append(components[idx])
-        #         if (idx + 1) % 20 == 0 or idx + 1 == total:
-        #             eid = ",".join(entries)
-        #             self.log("eid: " + str(eid), 4)
-        #             del entries[:]
-        #             jsn = self.getJson(
-        #                 self.__create_url(
-        #                     "https://api.one.accedo.tv/content/entries",
-        #                     args={"id": eid, "locale": "it"},
-        #                 ),
-        #                 headers=self.getSessionHeaders(),
-        #             )
-        #             if jsn and "entries" in jsn:
-        #                 result.extend(jsn["entries"])
-        #     # self.log('result: ' + str(len(result)), 4)
-        #     return result
-        # return False
+    # def __getSectionsFromEntryID(self, eid):
+    #     args = {
+    #         "sys.id": eid,
+    #         "include": "1",
+    #         "limit": 100,
+    #         "skip": 0,
+    #     }
+    #     data, _ = self.__getEntriesFromUrl(
+    #         self.ACCEDO_ONE_URL, args, headers=self.getSessionHeaders()
+    #     )
+    #     return data or False
 
     def __createMediasetUrl(
         self, base, pageels=None, page=None, args=None, passkeys=True
@@ -762,31 +729,40 @@ class Mediaset(rutils.RUtils):
             return [item for _, _, _, item in data or []]
         return []
 
-    def OttieniOnDemandGeneri(self, id, sort=None, order="asc"):
+    def OttieniOnDemandQuery(self, query={}, sort="", order="asc"):
         self.log(
-            "Trying to get the sections list for ondemand: section={}, sort={}, order={}".format(
-                id, sort, order
+            "Trying to get the sections list for ondemand: query={}, sort={}, order={}".format(
+                pformat(query), sort, order
             ),
             4,
         )
-        data = self.__getSectionsFromEntryID(id)
-        # self.log("OttieniOnDemandGeneri data={}".format(pformat(data)), 4)
+        defaultArgs = {
+            "include": "0",
+            "limit": "100",
+            "skip": "0",
+        }
+        args = {k: v for k, v in {**defaultArgs, **query}.items() if v}
+        self.log("OttieniOnDemandQuery args={}".format(pformat(args)), 4)
+        data, hasMore = self.__getEntriesFromUrl(
+            self.ACCEDO_ONE_URL, args, headers=self.getSessionHeaders()
+        )
+        # data = self.__getSectionsFromEntryID(id)
+        # self.log("OttieniOnDemandQuery data={}".format(pformat(data)), 4)
         if data:
-            if sort:
-                return sorted(
-                    data,
-                    key=lambda k: k[sort] if k and sort in k else "",
-                    reverse=(not order == "asc"),
+            entries = [
+                (
+                    item[sort] if (sort in item and item[sort]) else "",
+                    0 if "title" in item else 1,
+                    i,
+                    item,
                 )
-            else:
-                data = [
-                    (0 if "title" in item else 1, i, item)
-                    for i, item in enumerate(data)
-                    if "nolegg" not in item["name"]
-                ]
-                data.sort()
-                return [item for _, _, item in data]
-        return data or []
+                for i, item in enumerate(data)
+                if "name" not in item or "nolegg" not in item["name"]
+            ]
+            reverseOrder = order == "desc"
+            entries.sort(reverse=reverseOrder)
+            return [item for _, _, _, item in entries], hasMore
+        return [], hasMore
 
     def OttieniMagazine(self, newsFeedUrl, iperpage=None):
         self.log(
@@ -833,7 +809,7 @@ class Mediaset(rutils.RUtils):
                 feedurl = "{}?range={}-{}".format(feedurl, 1, iperpage)
         self.log("Trying to get the list of articles for cult section: " + feedurl, 4)
         jsn = self.getJson(feedurl)
-        self.log("Trying to get the list of articles for cult section: %s" % jsn, 4)
+        # self.log("Trying to get the list of articles for cult section: %s" % jsn, 4)
         nextPage = False
         prevPage = False
         els = []

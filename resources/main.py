@@ -5,6 +5,7 @@ from resources.lib.authentication import Authentication
 from resources.mediaset_datahelper import _gather_info, _gather_art, _gather_media_type
 from phate89lib import kodiutils, staticutils  # pyright: ignore[reportMissingImports]
 from pprint import pformat
+import json
 
 
 class KodiMediaset(object):
@@ -512,21 +513,110 @@ class KodiMediaset(object):
             arts = {**defaultArt, **_gather_art(item)}
             kodiutils.addListItem(
                 item["title"],
-                {"mode": "ondemand", "id": item["id"]},
+                {"mode": "ondemand", "id": item["id"], "include": "1"},
                 arts=arts,
             )
         kodiutils.endScript()
 
-    def elenco_ondemand(self, id, template=None, sort="", order="asc"):
+    def elenco_ondemand(
+        self,
+        id="",
+        include="1",
+        contentType="",
+        fields="",
+        feedParams="",
+        template=None,
+        sort="",
+        order="asc",
+        page=0,
+        size=0,
+    ):
         kodiutils.log(
-            ("elenco_ondemand: id={},template={},sort={},order={}").format(
-                str(id), str(template), str(sort), str(order)
+            (
+                "elenco_ondemand: id={},fields={},feedParams={},template={},sort={},order={},page={},size={}"
+            ).format(
+                str(id),
+                str(fields),
+                str(feedParams),
+                str(template),
+                str(sort),
+                str(order),
+                str(page),
+                str(size),
             ),
             4,
         )
         arts = self.__getDirectoryArt()
-        for sec in self.med.OttieniOnDemandGeneri(id, sort, order):
-            # kodiutils.log("elenco_ondemand section={}".format(pformat(sec)), 4)
+        size = int(size) if size else int(self.iperpage)
+        page = int(page)
+        query = {
+            "sys.id": id,
+            "include": include,
+            "content_type": contentType,
+            "limit": "100",
+        }
+
+        if include == "0":
+            if size:
+                query["limit"] = str(size)
+            if page and size:
+                query["skip"] = str(page * size)
+
+        if fields:
+            for fieldsInner in fields.split("|"):
+                for fieldsVars in fieldsInner.split("@"):
+                    if fieldsVars and len(fieldsVars) == 2:
+                        query[fieldsVars[0]] = fieldsVars[1]
+
+        if feedParams:
+            for feedInner in feedParams.split("|"):
+                feedVars = feedInner.split("@")
+                if feedVars and len(feedVars) == 2:
+                    query[feedVars[0]] = feedVars[1]
+
+        data, hasMore = self.med.OttieniOnDemandQuery(query, sort, order)
+
+        if include == "0" and hasMore:
+            kodiutils.addListItem(
+                kodiutils.LANGUAGE(32130),
+                {
+                    "mode": "ondemand",
+                    "id": id if id else "",
+                    "include": include if include else "",
+                    "contentType": contentType if contentType else "",
+                    "fields": fields if fields else "",
+                    "feedParams": feedParams if feedParams else "",
+                    "template": template if template else "",
+                    "sort": sort if sort else "",
+                    "order": order if order else "",
+                    "page": page + 1,
+                    "size": size,
+                },
+                properties={"SpecialSort": "top"},
+                arts=self.__getForwardArt(),
+            )
+        if include == "0" and page > 0:
+            kodiutils.addListItem(
+                kodiutils.LANGUAGE(32129),
+                {
+                    "mode": "ondemand",
+                    "id": id if id else "",
+                    "include": include if include else "",
+                    "contentType": contentType if contentType else "",
+                    "fields": fields if fields else "",
+                    "feedParams": feedParams if feedParams else "",
+                    "template": template if template else "",
+                    "sort": sort if sort else "",
+                    "order": order if order else "",
+                    "page": page - 1,
+                    "size": size,
+                },
+                properties={"SpecialSort": "top"},
+                arts=self.__getBackwardArt(),
+            )
+
+        for sec in data:
+            # kodiutils.log("elenco_ondemand sec={}".format(pformat(sec)), 4)
             if template and (
                 ("template" in sec and str(sec["template"]) not in template.split("|"))
                 or "template" not in sec
@@ -582,30 +672,94 @@ class KodiMediaset(object):
                     {"mode": "cult", "feedurl": sec["feedurl"]},
                     arts=arts,
                 )
+            elif "feedParams" in sec:
+                # kodiutils.log(("elenco_ondemand feedParams: {}").format(str(sec)), 4)
+                feedParamsJson = json.loads(sec["feedParams"])
+                if (
+                    feedParamsJson
+                    and "feedParams" in feedParamsJson
+                    and feedParamsJson["feedParams"]
+                ):
+                    feedParams = "|".join(
+                        [k + "@" + v for k, v in feedParamsJson["feedParams"].items()]
+                    )
+                    kodiutils.addListItem(
+                        sec["title"],
+                        {"mode": "ondemand", "feedParams": feedParams, "include": "0"},
+                        arts=arts,
+                    )
+            elif (
+                "contentType" in sec
+                and sec["contentType"] == "article"
+                and "id" in sec
+                and sec["id"]
+            ):
+                kodiutils.addListItem(
+                    sec["title"],
+                    {"mode": "ondemand", "id": sec["id"], "include": "1"},
+                    arts=arts,
+                )
+            elif (
+                "contentType" in sec
+                and sec["contentType"] == "videoembed"
+                and "guid" in sec
+                and sec["guid"]
+            ):
+                kodiutils.addListItem(
+                    "Video",
+                    {"mode": "video", "guid": sec["guid"]},
+                    videoInfo={"title": "Video"},
+                    arts=arts,
+                    isFolder=False,
+                )
+            # else:
+            #     kodiutils.log(("elenco_ondemand other: {}").format(pformat(sec)), 4)
+
         kodiutils.endScript(closedir=True)
 
     def elenco_cult_root(self):
-        arts = self.__getDirectoryArt()
-        kodiutils.addListItem(
-            "Home",
-            {
-                "mode": "ondemand",
-                "id": "5dada71d23eec6001ba1a83b",
-                "template": "video-mixed|playlist",
-                "sort": "title",
-            },
-            arts=arts,
-        )
-        kodiutils.addListItem(
-            "Tutti i Video",
-            {
-                "mode": "ondemand",
-                "id": "5c0ff291a0e845001bb455bf",
-                "template": "video-mixed|playlist",
-                "sort": "title",
-            },
-            arts=arts,
-        )
+        defaultArt = self.__getDirectoryArt()
+        query = {
+            "include": "0",
+            "content_type": "pageTemplate",
+            "fields.seriesId": "SE000000000641",
+        }
+        items, _ = self.med.OttieniOnDemandQuery(query, "pageUrl", "asc")
+        for item in items:
+            kodiutils.log(("elenco_cult_root: item={}").format(pformat(item)), 4)
+            if "title" in item and "id" in item:
+                arts = {**defaultArt, **_gather_art(item)}
+                kodiutils.addListItem(
+                    item["title"],
+                    {
+                        "mode": "ondemand",
+                        "id": item["id"],
+                        "include": "1",
+                        "sort": "title",
+                        "order": "asc",
+                    },
+                    arts=arts,
+                )
+        # kodiutils.addListItem(
+        #     "Home",
+        #     {
+        #         "mode": "ondemand",
+        #         "id": "5dada71d23eec6001ba1a83b",
+        #         "template": "keyframe|playlist",
+        #         "sort": "title",
+        #     },
+        #     arts=arts,
+        # )
+        # kodiutils.addListItem(
+        #     "Tutti i Video",
+        #     {
+        #         "mode": "ondemand",
+        #         "id": "5c0ff291a0e845001bb455bf",
+        #         "template": "keyframe|playlist",
+        #         "sort": "title",
+        #     },
+        #     arts=arts,
+        # )
         kodiutils.endScript()
 
     def elenco_cult(self, feedurl, page_action=""):
@@ -1245,9 +1399,23 @@ class KodiMediaset(object):
                     )
                 )
             elif params["mode"] == "ondemand":
-                if "id" in params:
+                if "id" in params or "feedParams" in params or "fields" in params:
                     self.elenco_ondemand(
-                        **self.sliceParams(params, ("id", "template", "sort", "order"))
+                        **self.sliceParams(
+                            params,
+                            (
+                                "id",
+                                "include",
+                                "contentType",
+                                "fields",
+                                "feedParams",
+                                "template",
+                                "sort",
+                                "order",
+                                "page",
+                                "size",
+                            ),
+                        )
                     )
                 else:
                     self.elenco_ondemand_root()
