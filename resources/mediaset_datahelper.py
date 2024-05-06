@@ -2,13 +2,16 @@ from datetime import datetime, date
 from kodi_six import utils  # pyright: ignore[reportMissingImports]
 from functools import reduce
 import json
+# from phate89lib import kodiutils  # pyright: ignore[reportMissingImports]
+# from pprint import pformat
 
 
 def __reduceTags(x, y):
-    if y["scheme"] in x:
-        x[y["scheme"]].append(y["title"])
-    else:
-        x[y["scheme"]] = [y["title"]]
+    if "scheme" in y and y["scheme"]:
+        if y["scheme"] in x:
+            x[y["scheme"]].append(y["title"])
+        else:
+            x[y["scheme"]] = [y["title"]]
     return x
 
 
@@ -25,7 +28,7 @@ def _gather_media_type(prog):
     programType = None
     if "programType" in prog:
         programType = prog["programType"]
-    if "programtype" in prog:
+    elif "programtype" in prog:
         programType = prog["programtype"]
     if programType:
         if programType == "movie":
@@ -33,6 +36,8 @@ def _gather_media_type(prog):
         if programType == "TVSeason":
             return "tvshow"
         if programType == "episode":
+            return "episode"
+        if programType == "extra":
             return "episode"
     if (
         "mediasetprogram$brandVerticalSiteCMS" in prog
@@ -143,6 +148,8 @@ def _gather_info(prog, titlewd=False, mediatype=None, infos=None, lookup_fullplo
             plotoutline = prog["mediasetprogram$brandDescription"]
         elif "mediasetprogram$subBrandDescription" in prog:
             plotoutline = prog["mediasetprogram$subBrandDescription"]
+        elif "descriptionSeo" in prog:
+            plotoutline = prog["descriptionSeo"]
 
         # try to find plot
         if lookup_fullplot:
@@ -210,6 +217,7 @@ def _gather_info(prog, titlewd=False, mediatype=None, infos=None, lookup_fullplo
 
 def _gather_art(prog):
     arts = {}
+    # kodiutils.log(("_gather_art prog: {}").format(pformat(prog)), 4)
     if "thumbnails" in prog:
         mediaType = _gather_media_type(prog)
 
@@ -281,20 +289,30 @@ def _gather_art(prog):
         return _gather_art(prog["program"])
 
     elif (
-        "type" in prog
-        and prog["type"] == "Entry"
-        and "contentType" in prog
-        and prog["contentType"] == "page"
+        "type" in prog and prog["type"] == "Entry"
+        # and "contentType" in prog
+        # and prog["contentType"] in ["page", "article", "listMixedContent"]
     ):
+        imageUrl = _safeGet(prog, "imageUrl")
+        posterImageUrl = _safeGet(prog, "posterImageUrl")
+        keyframeImageUrl = _safeGet(prog, "keyframeImageUrl")
         poster = (
-            __findImgMax(json.loads(prog["posterImage"]))
-            if "posterImage" in prog
-            else ""
+            (
+                __findImgMax(json.loads(prog["posterImage"]))
+                if "posterImage" in prog and prog["posterImage"]
+                else ""
+            )
+            or imageUrl
+            or posterImageUrl
         )
         keyframe = (
-            __findImgMax(json.loads(prog["keyframeImage"]))
-            if "keyframeImage" in prog
-            else ""
+            (
+                __findImgMax(json.loads(prog["keyframeImage"]))
+                if "keyframeImage" in prog and prog["keyframeImage"]
+                else ""
+            )
+            or imageUrl
+            or keyframeImageUrl
         )
         if poster:
             arts["thumb"] = poster
@@ -323,3 +341,128 @@ def __findImgMax(el):
         if images and images[-1]:
             return "{}{}".format(baseUrl, images[-1][-1])
     return ""
+
+
+def _findGuid(el, videos):
+    if el and videos:
+        # kodiutils.log("_findGuid el={}".format(pformat(el)))
+        # kodiutils.log(
+        #     "_findGuid fields.text.content={}".format(pformat(_safeGet(el, "fields.text.content")))
+        # )
+        return next(
+            (
+                _safeGet(_safeGet(videos, _safeGet(x, "data.target.sys.id")), "guid")
+                for x in _safeGet(el, "fields.text.content")
+                if _safeGet(x, "nodeType") == "embedded-entry-block"
+                and _safeGet(x, "data.target.sys.type") == "Link"
+                and _safeGet(x, "data.target.sys.linkType") == "Entry"
+                and _safeGet(videos, _safeGet(x, "data.target.sys.id"))
+            ),
+            "",
+        )
+    return ""
+    # if "text" in el and el["text"] and "content" in el["text"]["content"] and videos:
+    #     for node in el["text"]["content"]:
+    #         if (
+    #             "nodeType" in node
+    #             and node["nodeType"]
+    #             and node["nodeType"] == "embedded-entry-block"
+    #             and "data" in node
+    #             and node["data"]
+    #             and "target" in node["data"]
+    #             and node["data"]["target"]
+    #             and "sys" in node["data"]["target"]
+    #             and node["data"]["target"]["sys"]
+    #             and "id" in node["data"]["target"]["sys"]
+    #             and node["data"]["target"]["sys"]["id"]
+    #             and "type" in node["data"]["target"]["sys"]
+    #             and node["data"]["target"]["sys"]["type"] == "Link"
+    #             and "linkType" in node["data"]["target"]["sys"]
+    #             and node["data"]["target"]["sys"]["linkType"] == "Entry"
+    #         ):
+    #             if (
+    #                 node["data"]["target"]["sys"]["id"] in videos
+    #                 and videos[node["data"]["target"]["sys"]]
+    #             ):
+    #                 return videos[node["data"]["target"]["sys"]]
+    # return ""
+
+
+def _normalizeUrl(uri):
+    if uri:
+        if uri.startswith("http"):
+            return uri
+        else:
+            httpProtocol = "https:" if uri.startswith("//") else "https://"
+            return "{}{}".format(httpProtocol, uri)
+    return ""
+
+
+def _findImage(el, assets):
+    imageId = _safeGet(el, "fields.image.sys.id")
+    # kodiutils.log("_findImage imageid={}".format(imageId))
+    if imageId:
+        image = _safeGet(assets, imageId)
+        # kodiutils.log("_findImage image={}".format(str(image)))
+        imageURI = _safeGet(image, "file.url")
+        # kodiutils.log("_findImage imageURI={}".format(str(imageURI)))
+        imageUrl = _normalizeUrl(imageURI)
+        # kodiutils.log("_findImage imageUrl={}".format(str(imageUrl)))
+        return imageUrl
+    return ""
+
+
+def _findEmbeddedVideos(el):
+    if _safeGet(el, "includes.Entry"):
+        return dict(
+            map(
+                _mapItemToEntry,
+                [
+                    x
+                    for x in _safeGet(el, "includes.Entry")
+                    if _safeGet(x, "sys.id")
+                    and _safeGet(x, "sys.contentType.sys.id") == "videoembed"
+                ],
+            )
+        )
+    return {}
+
+
+def _findEmbeddedAssets(el):
+    if _safeGet(el, "includes.Asset"):
+        return dict(
+            map(
+                _mapItemToEntry,
+                [
+                    x
+                    for x in el["includes"]["Asset"]
+                    if _safeGet(x, "sys.id") and _safeGet(x, "fields.file.url")
+                ],
+            )
+        )
+    return {}
+
+
+def _mapItemToEntry(el):
+    entry = _mapItem(el)
+    return (entry["id"], entry)
+
+
+def _safeGet(el, path, value=""):
+    if el and path:
+        for x in path.split("."):
+            if el and x in el:
+                el = el[x]
+            else:
+                return value
+        return el or value
+    return value
+
+
+def _mapItem(el):
+    return {
+        **el["fields"],
+        "id": _safeGet(el, "sys.id"),
+        "type": _safeGet(el, "sys.type"),
+        "contentType": _safeGet(el, "sys.contentType.sys.id"),
+    }

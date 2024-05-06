@@ -2,6 +2,14 @@ from pprint import pformat
 import uuid
 import xml.etree.ElementTree as ET
 from phate89lib import kodiutils, rutils, staticutils  # pyright: ignore[reportMissingImports]
+from resources.mediaset_datahelper import (
+    _findGuid,
+    _findImage,
+    _mapItem,
+    _findEmbeddedVideos,
+    _findEmbeddedAssets,
+    _safeGet,
+)
 
 try:
     from urllib.parse import urlencode
@@ -527,7 +535,7 @@ class Mediaset(rutils.RUtils):
             "personas": personas,
         }
 
-    def __getEntriesFromUrl(self, url, args=None, headers={}):
+    def __getEntriesFromUrl(self, url, args=None, headers={}, forceItems=""):
         hasMore = False
         data = self.getJson(self.__create_url(url, args), headers=headers)
         if data:
@@ -543,33 +551,42 @@ class Mediaset(rutils.RUtils):
                 hasMore = data["skip"] + data["limit"] < data["total"]
             if "entries" in data:
                 return data["entries"], hasMore
-            elif "includes" in data and "Entry" in data["includes"]:
+            elif _safeGet(data, "includes.Entry") and forceItems != "1":
+                embeddedVideos = _findEmbeddedVideos(data)
+                embeddedAssets = _findEmbeddedAssets(data)
+                embeddedItems = _safeGet(data, "items") or [{}]
                 return list(
                     map(
                         lambda x: {
-                            **x["fields"],
-                            "id": x["sys"]["id"],
-                            "type": x["sys"]["type"],
-                            "contentType": x["sys"]["contentType"]["sys"]["id"],
+                            "keyframeImage": _safeGet(
+                                embeddedItems[0], "fields.keyframeImage"
+                            ),
+                            "posterImage": _safeGet(
+                                embeddedItems[0], "fields.posterImage"
+                            ),
+                            "guid": _findGuid(x, embeddedVideos),
+                            "imageUrl": _findImage(x, embeddedAssets),
+                            **_mapItem(x),
                         },
-                        data["includes"]["Entry"],
+                        _safeGet(data, "includes.Entry"),
                     )
                 ), hasMore
-            elif "items" in data:
+            elif _safeGet(data, "items"):
+                embeddedVideos = _findEmbeddedVideos(data)
+                embeddedAssets = _findEmbeddedAssets(data)
                 return list(
                     map(
                         lambda x: {
-                            **x["fields"],
-                            "id": x["sys"]["id"],
-                            "type": x["sys"]["type"],
-                            "contentType": x["sys"]["contentType"]["sys"]["id"],
+                            "guid": _findGuid(x, embeddedVideos),
+                            "imageUrl": _findImage(x, embeddedAssets),
+                            **_mapItem(x),
                         },
                         data["items"],
                     )
                 ), hasMore
         return data, hasMore
 
-    def __getElsFromUrl(self, url, headers={}):
+    def __getElsFromUrl(self, url, headers={}, checkSingleBlock=True):
         result = []
         hasMore = False
         data = self.getJson(url, headers=headers)
@@ -606,10 +623,11 @@ class Mediaset(rutils.RUtils):
                 if "entries" in response:
                     result = response["entries"]
                 elif "blocks" in response:
-                    if len(response["blocks"]) == 1:
+                    if len(response["blocks"]) == 1 and checkSingleBlock:
                         result = response["blocks"][0]["items"]
                     else:
                         result = response["blocks"]
+                        hasMore = False
                 else:
                     result = response
             elif "entries" in data:
@@ -707,17 +725,20 @@ class Mediaset(rutils.RUtils):
                         (
                             priority
                             for pageUrl, priority in page_priority.items()
-                            if pageUrl in item["pageUrl"]
+                            if pageUrl in str(_safeGet(item, "pageUrl"))
                         ),
                         "9999",
                     ),
-                    item["title"].lower(),
+                    str(_safeGet(item, "title")).lower(),
                     i,
                     item,
                 )
                 for i, item in enumerate(data)
-                if item["name"].lower().startswith("[mpi]")
-                and not any(pageUrl in item["pageUrl"] for pageUrl in page_exclude)
+                if str(_safeGet(item, "name")).lower().startswith("[mpi]")
+                and not any(
+                    pageUrl in str(_safeGet(item, "pageUrl"))
+                    for pageUrl in page_exclude
+                )
             ]
             data.sort()
             # for item in data:
@@ -729,10 +750,10 @@ class Mediaset(rutils.RUtils):
             return [item for _, _, _, item in data or []]
         return []
 
-    def OttieniOnDemandQuery(self, query={}, sort="", order="asc"):
+    def OttieniOnDemandQuery(self, query={}, forceItems="", sort="", order="asc"):
         self.log(
-            "Trying to get the sections list for ondemand: query={}, sort={}, order={}".format(
-                pformat(query), sort, order
+            "Trying to get the sections list for ondemand: query={}, forceItems={}, sort={}, order={}".format(
+                pformat(query), forceItems, sort, order
             ),
             4,
         )
@@ -742,9 +763,17 @@ class Mediaset(rutils.RUtils):
             "skip": "0",
         }
         args = {k: v for k, v in {**defaultArgs, **query}.items() if v}
-        self.log("OttieniOnDemandQuery args={}".format(pformat(args)), 4)
+        self.log(
+            "OttieniOnDemandQuery args={}, forceItems={}".format(
+                pformat(args), str(forceItems)
+            ),
+            4,
+        )
         data, hasMore = self.__getEntriesFromUrl(
-            self.ACCEDO_ONE_URL, args, headers=self.getSessionHeaders()
+            self.ACCEDO_ONE_URL,
+            args,
+            headers=self.getSessionHeaders(),
+            forceItems=forceItems,
         )
         # data = self.__getSectionsFromEntryID(id)
         # self.log("OttieniOnDemandQuery data={}".format(pformat(data)), 4)
@@ -757,7 +786,7 @@ class Mediaset(rutils.RUtils):
                     item,
                 )
                 for i, item in enumerate(data)
-                if "name" not in item or "nolegg" not in item["name"]
+                if "name" not in item or "nolegg" not in str(_safeGet(item, "name"))
             ]
             reverseOrder = order == "desc"
             entries.sort(reverse=reverseOrder)
@@ -979,13 +1008,24 @@ class Mediaset(rutils.RUtils):
         self,
         id="",
         searchParams={},
-        pageels=20,
-        page=None,
-        params=None,
-        sort=None,
+        pageels=10,
+        page=1,
+        params="",
+        sort="",
         order="asc",
     ):
-        self.log("Trying to get the programs from section id " + id, 4)
+        self.log(
+            "OttieniProgrammiGenere: id={}, searchParams={}, pageels={}, page={}, params={}, sort={}, order={}".format(
+                str(id),
+                str(searchParams),
+                str(pageels),
+                str(page),
+                str(params),
+                str(sort),
+                str(order),
+            ),
+            4,
+        )
         account = self.getAccount() or {}
         args = {
             **{
@@ -1019,10 +1059,54 @@ class Mediaset(rutils.RUtils):
             ), hasMore
         return data, hasMore
 
-    def OttieniStagioni(self, seriesId, sort=None, order="asc"):
-        self.log("Trying to get the seasons from series id {}".format(seriesId), 4)
+    def OttieniSerie(self, seriesId="", seriesGuid=""):
+        self.log(
+            "OttieniSerie: Trying to get the serie data from seriesId={}, seriesGuid={}".format(
+                seriesId, seriesGuid
+            ),
+            4,
+        )
+        if not seriesGuid and "guid" in seriesId:
+            seriesGuid = seriesId.split("/")[-1]
+        if seriesGuid.startswith("SE"):
+            url = "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-series-v2"
+            args = {"byGuid": seriesGuid}
+            return self.__getEntriesFromUrl(url, args)
+        return [], False
+
+    def OttieniStagioni(
+        self, seriesId="", seriesGuid="", sort="tvSeasonNumber", order="asc"
+    ):
+        self.log(
+            "OttieniStagioni: Trying to get the seasons from series id seriesId={}, seriesGuid={}".format(
+                seriesId, seriesGuid
+            ),
+            4,
+        )
+        seriesData, _ = self.OttieniSerie(seriesId=seriesId, seriesGuid=seriesGuid)
+        # self.log(
+        #     "OttieniStagioni: seriesData={}".format(pformat(seriesData)),
+        #     4,
+        # )
         url = "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-tv-seasons-v2"
-        args = {"bySeriesId": seriesId}
+        args = {}
+        seasonsGuid = (
+            "|".join(
+                [
+                    str(_safeGet(x, "guid"))
+                    for x in _safeGet(seriesData[0], "seriesTvSeasons")
+                    if _safeGet(x, "id")
+                    and str(_safeGet(x, "id"))
+                    in str(_safeGet(seriesData[0], "availableTvSeasonIds"))
+                ]
+            )
+            if seriesData
+            else ""
+        )
+        if seasonsGuid:
+            args["byGuid"] = seasonsGuid
+        else:
+            args["bySeriesId"] = seriesId
         if sort:
             args["sort"] = sort + "|" + order
         return self.__getEntriesFromUrl(url, args)
@@ -1075,7 +1159,16 @@ class Mediaset(rutils.RUtils):
             args["byCustomValue"] = ",".join(byCustomValue)
         return self.__getEntriesFromUrl(url, args=args)
 
-    def Cerca(self, query, channel="", section="", pageels=100, page=None):
+    def Cerca(
+        self,
+        query,
+        channel="",
+        section="",
+        shortId="",
+        pageels=100,
+        page=1,
+        checkSingleBlock=True,
+    ):
         account = self.getAccount() or {}
         args = {
             "tenant": "play-prod-v2",
@@ -1088,7 +1181,7 @@ class Mediaset(rutils.RUtils):
             "sid": account["sid"] if "sid" in account else "",
             "clientId": account["clientId"] if "clientId" in account else "",
             "userContext": account["userContext"] if "userContext" in account else "",
-            "shortId": "",
+            "shortId": shortId,
             "contentId": "",
             "aresContext": "",
         }
@@ -1100,7 +1193,9 @@ class Mediaset(rutils.RUtils):
             page=page,
             args=args,
         )
-        data, hasMore = self.__getElsFromUrl(url, headers=self.getAuthHeaders())
+        data, hasMore = self.__getElsFromUrl(
+            url, headers=self.getAuthHeaders(), checkSingleBlock=checkSingleBlock
+        )
         # if sort and data and not hasMore:
         #     return sorted(data, key=lambda k: k[sort] if sort in k else '', reverse=(not order == 'asc')), hasMore
         return data, hasMore
@@ -1165,7 +1260,7 @@ class Mediaset(rutils.RUtils):
                 time = staticutils.get_timestamp()
             for channel in listings.values():
                 station = list(channel["stations"].values())[0]
-                self.log("station {}".format(station))
+                # self.log("station {}".format(station))
                 currentListing = channel["currentListing"]
                 nextListing = (
                     channel["nextListing"] if "nextListing" in channel else None
@@ -1269,7 +1364,7 @@ class Mediaset(rutils.RUtils):
             data["contentId"] = guid
             data["streamType"] = "VOD"
         jsn = self.getJson(url, json=data, headers=self.getAuthHeaders(), params=params)
-        self.log("PlaybackCheck jsn={jsn}".format(jsn=str(jsn)), 4)
+        self.log("PlaybackCheck jsn={jsn}".format(jsn=pformat(jsn)), 4)
         if (
             jsn
             and "isOk" in jsn
@@ -1357,7 +1452,7 @@ class Mediaset(rutils.RUtils):
                         res["pid"] = value
                         break
             break
-        self.log("OttieniDatiVideo res={res}".format(res=str(res)), 4)
+        self.log("OttieniDatiVideo res={res}".format(res=pformat(res)), 4)
         if properties and "url" in res:
             res["url"] = self.__create_url(res["url"], properties)
         return res
