@@ -267,23 +267,72 @@ def _gather_art(prog):
 
         if mediaType:
             icon = None
+            poster = None
+            banner = None
+            landscape = None
+            fanart = None
             if mediaType == "episode":
                 icon = __findImg(
                     prog["thumbnails"],
                     [
-                        "image_keyframe_poster-240x135",
-                        "image_keyframe_poster-265x148",
-                        "image_keyframe_poster-292x165",
-                        "image_keyframe_poster-360x203",
-                        "image_keyframe_poster-391x220",
-                        "image_keyframe_poster-652x367",
-                        "image_keyframe_poster-1200x630",
                         "image_keyframe_poster-1280x720",
+                        "image_keyframe_poster-1200x630",
+                        "image_keyframe_poster-652x367",
+                        "image_keyframe_poster-391x220",
+                        "image_keyframe_poster-360x203",
+                        "image_keyframe_poster-292x165",
+                        "image_keyframe_poster-265x148",
+                        "image_keyframe_poster-240x135",
+                    ],
+                )
+                poster = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_vertical-264x396",
+                        "image_vertical-192x288",
+                        "image_vertical-168x252",
+                        "image_vertical-140x210",
+                    ],
+                )
+                banner = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_header_poster-1440x433",
+                        "image_header_poster-960x289",
+                    ],
+                )
+                landscape = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_horizontal_cover-704x396",
+                        "brand_cover-1440x513",
+                        "brand_cover-768x340",
+                        "brand_cover-320x184",
+                    ],
+                )
+                fanart = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_header_poster-1440x630",
+                        "image_header_poster-900x394",
+                        "image_header_poster-768x384",
+                        "image_header_poster-768x480",
                     ],
                 )
             if icon:
-                arts["thumb"] = icon
+                arts["icon"] = icon
                 arts["poster"] = icon
+                arts["thumb"] = icon
+            elif poster:
+                arts["icon"] = poster
+                arts["poster"] = poster
+                arts["thumb"] = poster
+            if banner:
+                arts["banner"] = banner
+            if landscape:
+                arts["landscape"] = landscape
+            elif fanart:
+                arts["fanart"] = fanart
 
     elif "program" in prog:
         return _gather_art(prog["program"])
