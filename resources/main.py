@@ -35,7 +35,9 @@ class KodiMediaset(object):
             if mediaType:
                 kodiutils.setContent(mediaType + "s")
 
-    def __geItemtArt(self, icon="notify.png", poster="", fanart="fanart.jpg"):
+    def __geItemtArt(
+        self, icon="Icona_APP.png", poster="", fanart="mediasetinfinity-keyframe.jpg"
+    ):
         if not poster:
             poster = icon
         art = {}
@@ -43,23 +45,54 @@ class KodiMediaset(object):
         art["icon"] = kodiutils.getMedia(icon)
         art["poster"] = kodiutils.getMedia(poster)
         art["banner"] = kodiutils.getMedia(poster)
-        art["landscape"] = kodiutils.getMedia(fanart)
-        art["fanart"] = kodiutils.getMedia(fanart)
-        art["clearart"] = kodiutils.getMedia(fanart)
+        art["landscape"] = (
+            fanart if fanart.startswith("http") else kodiutils.getMedia(fanart)
+        )
+        art["fanart"] = (
+            fanart if fanart.startswith("http") else kodiutils.getMedia(fanart)
+        )
+        art["clearart"] = (
+            fanart if fanart.startswith("http") else kodiutils.getMedia(fanart)
+        )
         art["clearlogo"] = kodiutils.getMedia(poster)
         return art
 
-    def __getDirectoryArt(self):
-        return self.__geItemtArt("notify.png")
+    def __getDirectoryArt(self, fanart="mediasetinfinity-keyframe.jpg"):
+        return self.__geItemtArt("Icona_APP.png", fanart=fanart)
 
-    def __getForwardArt(self):
-        return self.__geItemtArt("forward.png")
+    def __getForwardArt(self, fanart="mediasetinfinity-keyframe.jpg"):
+        return self.__geItemtArt("forward-darkorchid.png", fanart=fanart)
 
-    def __getForwardText(self):
-        return self._getArrowText(True, kodiutils.LANGUAGE(32130))
+    def __getForwardText(self, color="darkorchid"):
+        return self._getArrowText(True, kodiutils.LANGUAGE(32130), color=color)
 
-    def __getBackwardArt(self):
-        return self.__geItemtArt("backward.png")
+    def __getBackwardArt(self, fanart="mediasetinfinity-keyframe.jpg"):
+        return self.__geItemtArt("backward-darkorchid.png", fanart=fanart)
+
+    def __getBackwardText(self, color="darkorchid"):
+        return self._getArrowText(False, kodiutils.LANGUAGE(32129), color=color)
+
+    def _getArrowText(self, isForward=True, text="", color=""):
+        return "[COLOR {}][B]{} {}[/B][/COLOR]".format(
+            color, ">>" if isForward else "<<", text
+        )
+
+    def __getUpArt(self, fanart="mediasetinfinity-keyframe.jpg"):
+        return self.__geItemtArt("up-orange.png", fanart=fanart)
+
+    def __getUpText(self, color="orange"):
+        return self.__getOrderText("ASC", color=color)
+
+    def __getDownArt(self, fanart="mediasetinfinity-keyframe.jpg"):
+        return self.__geItemtArt("down-orange.png", fanart=fanart)
+
+    def __getDownText(self, color="orange"):
+        return self.__getOrderText("DESC", color=color)
+
+    def __getOrderText(self, order="ASC", color=""):
+        return "[COLOR {}][B]{} {}[/B][/COLOR]".format(
+            color, "++" if order == "ASC" else "--", "Ordinamento"
+        )
 
     def __getBackwardText(self):
         return self._getArrowText(False, kodiutils.LANGUAGE(32129))
@@ -991,6 +1024,7 @@ class KodiMediaset(object):
         #     4,
         # )
         if els:
+            fanart = str(_safeGet(arts, "fanart"))
             if hasmore:
                 kodiutils.addListItem(
                     self.__getForwardText(),
@@ -1000,9 +1034,11 @@ class KodiMediaset(object):
                         "shortId": shortId,
                         "params": params,
                         "page": page + 1,
+                        "posterImage": posterImage,
+                        "keyframeImage": keyframeImage,
                     },
                     properties={"SpecialSort": "top"},
-                    arts=self.__getForwardArt(),
+                    arts=self.__getForwardArt(fanart=fanart),
                 )
             if page > 1:
                 kodiutils.addListItem(
@@ -1013,11 +1049,21 @@ class KodiMediaset(object):
                         "shortId": shortId,
                         "params": params,
                         "page": page - 1,
+                        "posterImage": posterImage,
+                        "keyframeImage": keyframeImage,
                     },
                     properties={"SpecialSort": "top"},
-                    arts=self.__getBackwardArt(),
+                    arts=self.__getBackwardArt(fanart=fanart),
                 )
-            self.__analizza_elenco(els, setcontent=True, arts=arts)
+            self.__analizza_elenco(
+                els,
+                setcontent=True,
+                arts=arts,
+                blockParams={
+                    "posterImage": posterImage,
+                    "keyframeImage": keyframeImage,
+                },
+            )
             # else:
             #     kodiutils.addListItem('Ordina {}'.format('DESC' if sort and order == 'asc' else 'ASC'), {
             #         'mode': 'sezione', 'id': id,
@@ -1134,19 +1180,26 @@ class KodiMediaset(object):
         )
 
         if not sort:
+            update_listing = False
             sortSetting = kodiutils.getSettingAsNum("sort")
             if sortSetting:
                 sort = ":publishInfo_lastPublished|desc,tvSeasonEpisodeNumber|desc"
             else:
                 sort = ":publishInfo_lastPublished|asc,tvSeasonEpisodeNumber|asc"
+        else:
+            update_listing = True
 
         size = int(size) if size else int(self.iperpage)
         page = int(page) if page else 1
-        update_listing = page > 1
 
         els, hasMore = self.med.OttieniVideoSezione(
             sub_brand_id, sort=sort, page=page, size=size
         )
+        defaultArt = _gather_art(els[0]) if els else self.__getDirectoryArt()
+        fanart = str(
+            _safeGet(defaultArt, "landscape") or _safeGet(defaultArt, "fanart")
+        )
+
         if hasMore:
             kodiutils.addListItem(
                 self.__getForwardText(),
@@ -1158,9 +1211,10 @@ class KodiMediaset(object):
                     "size": size,
                 },
                 properties={"SpecialSort": "top"},
-                arts=self.__getForwardArt(),
+                arts=self.__getForwardArt(fanart=fanart),
             )
         if page > 1:
+            update_listing = True
             kodiutils.addListItem(
                 self.__getBackwardText(),
                 {
@@ -1171,7 +1225,7 @@ class KodiMediaset(object):
                     "size": size,
                 },
                 properties={"SpecialSort": "top"},
-                arts=self.__getBackwardArt(),
+                arts=self.__getBackwardArt(fanart=fanart),
             )
         if els and len(els) > 1:
             toggleSort = (
@@ -1184,7 +1238,9 @@ class KodiMediaset(object):
                 self.__getUpText() if "desc" in toggleSort else self.__getDownText()
             )
             toggleSortArt = (
-                self.__getUpArt() if "desc" in toggleSort else self.__getDownArt()
+                self.__getUpArt(fanart=fanart)
+                if "desc" in toggleSort
+                else self.__getDownArt(fanart=fanart)
             )
             kodiutils.addListItem(
                 toggleSortLabel,
@@ -1238,12 +1294,12 @@ class KodiMediaset(object):
         if added:
             kodiutils.notify(
                 "Aggiunto a {}".format(self.contextMenuMap[context_menu]),
-                icon=kodiutils.getMedia("notify.png"),
+                icon=kodiutils.getMedia("Icona_APP.png"),
             )
         elif deleted:
             kodiutils.notify(
                 "Rimosso da {}".format(self.contextMenuMap[context_menu]),
-                icon=kodiutils.getMedia("notify.png"),
+                icon=kodiutils.getMedia("Icona_APP.png"),
             )
         update_dir = context_ui == "refresh" and (added or deleted)
         kodiutils.endScript(closedir=False, update_dir=update_dir)

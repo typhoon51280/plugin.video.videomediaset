@@ -1,8 +1,9 @@
 from datetime import datetime, date
 from kodi_six import utils  # pyright: ignore[reportMissingImports]
 from functools import reduce
+import re
 import json
-# from phate89lib import kodiutils  # pyright: ignore[reportMissingImports]
+from phate89lib import kodiutils  # pyright: ignore[reportMissingImports]
 # from pprint import pformat
 
 
@@ -199,13 +200,33 @@ def _gather_info(prog, titlewd=False, mediatype=None, infos=None, lookup_fullplo
         infos["duration"] = prog["mediasetprogram$duration"]
     if "year" not in infos and "year" in prog:
         infos["year"] = prog["year"]
+
     if "season" not in infos and "tvSeasonNumber" in prog and prog["tvSeasonNumber"]:
         infos["season"] = prog["tvSeasonNumber"]
+
     if "episode" not in infos:
         if "tvSeasonEpisodeNumber" in prog and prog["tvSeasonEpisodeNumber"]:
             infos["episode"] = prog["tvSeasonEpisodeNumber"]
-        elif "season" in infos:
-            del infos["season"]
+
+    if str(_safeGet(infos, "season")) == "1":
+        try:
+            episodeRegex = re.match(
+                r"Episodio\s+(\d+)\s*.*", str(_safeGet(infos, "title"))
+            )
+            if episodeRegex:
+                episodeNumber = episodeRegex.group(1)
+                if (
+                    int(str(_safeGet(infos, "episode") or 0)) != int(episodeNumber)
+                    and int(episodeNumber) > 0
+                ):
+                    infos["episode"] = episodeNumber
+        except Exception as ex:
+            kodiutils.log("infos episode: error = {}".format(ex))
+            pass
+
+    if _safeGet(infos, "season") and not _safeGet(infos, "episode"):
+        del infos["season"]
+
     if "season" in infos and "episode" in infos:
         infos["tvshowtitle"] = prog["mediasetprogram$brandTitle"]
 
@@ -267,23 +288,72 @@ def _gather_art(prog):
 
         if mediaType:
             icon = None
+            poster = None
+            banner = None
+            landscape = None
+            fanart = None
             if mediaType == "episode":
                 icon = __findImg(
                     prog["thumbnails"],
                     [
-                        "image_keyframe_poster-240x135",
-                        "image_keyframe_poster-265x148",
-                        "image_keyframe_poster-292x165",
-                        "image_keyframe_poster-360x203",
-                        "image_keyframe_poster-391x220",
-                        "image_keyframe_poster-652x367",
-                        "image_keyframe_poster-1200x630",
                         "image_keyframe_poster-1280x720",
+                        "image_keyframe_poster-1200x630",
+                        "image_keyframe_poster-652x367",
+                        "image_keyframe_poster-391x220",
+                        "image_keyframe_poster-360x203",
+                        "image_keyframe_poster-292x165",
+                        "image_keyframe_poster-265x148",
+                        "image_keyframe_poster-240x135",
+                    ],
+                )
+                poster = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_vertical-264x396",
+                        "image_vertical-192x288",
+                        "image_vertical-168x252",
+                        "image_vertical-140x210",
+                    ],
+                )
+                banner = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_header_poster-1440x433",
+                        "image_header_poster-960x289",
+                    ],
+                )
+                landscape = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_horizontal_cover-704x396",
+                        "brand_cover-1440x513",
+                        "brand_cover-768x340",
+                        "brand_cover-320x184",
+                    ],
+                )
+                fanart = __findImg(
+                    prog["thumbnails"],
+                    [
+                        "image_header_poster-1440x630",
+                        "image_header_poster-900x394",
+                        "image_header_poster-768x384",
+                        "image_header_poster-768x480",
                     ],
                 )
             if icon:
-                arts["thumb"] = icon
+                arts["icon"] = icon
                 arts["poster"] = icon
+                arts["thumb"] = icon
+            elif poster:
+                arts["icon"] = poster
+                arts["poster"] = poster
+                arts["thumb"] = poster
+            if banner:
+                arts["banner"] = banner
+            if landscape:
+                arts["landscape"] = landscape
+            elif fanart:
+                arts["fanart"] = fanart
 
     elif "program" in prog:
         return _gather_art(prog["program"])
