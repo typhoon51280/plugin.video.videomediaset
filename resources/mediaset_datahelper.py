@@ -1,8 +1,9 @@
 from datetime import datetime, date
 from kodi_six import utils  # pyright: ignore[reportMissingImports]
 from functools import reduce
+import re
 import json
-# from phate89lib import kodiutils  # pyright: ignore[reportMissingImports]
+from phate89lib import kodiutils  # pyright: ignore[reportMissingImports]
 # from pprint import pformat
 
 
@@ -199,13 +200,33 @@ def _gather_info(prog, titlewd=False, mediatype=None, infos=None, lookup_fullplo
         infos["duration"] = prog["mediasetprogram$duration"]
     if "year" not in infos and "year" in prog:
         infos["year"] = prog["year"]
+
     if "season" not in infos and "tvSeasonNumber" in prog and prog["tvSeasonNumber"]:
         infos["season"] = prog["tvSeasonNumber"]
+
     if "episode" not in infos:
         if "tvSeasonEpisodeNumber" in prog and prog["tvSeasonEpisodeNumber"]:
             infos["episode"] = prog["tvSeasonEpisodeNumber"]
-        elif "season" in infos:
-            del infos["season"]
+
+    if str(_safeGet(infos, "season")) == "1":
+        try:
+            episodeRegex = re.match(
+                r"Episodio\s+(\d+)\s*.*", str(_safeGet(infos, "title"))
+            )
+            if episodeRegex:
+                episodeNumber = episodeRegex.group(1)
+                if (
+                    int(str(_safeGet(infos, "episode") or 0)) != int(episodeNumber)
+                    and int(episodeNumber) > 0
+                ):
+                    infos["episode"] = episodeNumber
+        except Exception as ex:
+            kodiutils.log("infos episode: error = {}".format(ex))
+            pass
+
+    if _safeGet(infos, "season") and not _safeGet(infos, "episode"):
+        del infos["season"]
+
     if "season" in infos and "episode" in infos:
         infos["tvshowtitle"] = prog["mediasetprogram$brandTitle"]
 

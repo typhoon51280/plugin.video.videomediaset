@@ -35,7 +35,9 @@ class KodiMediaset(object):
             if mediaType:
                 kodiutils.setContent(mediaType + "s")
 
-    def __geItemtArt(self, icon="notify.png", poster="", fanart="fanart.jpg"):
+    def __geItemtArt(
+        self, icon="Icona_APP.png", poster="", fanart="mediasetinfinity-keyframe.jpg"
+    ):
         if not poster:
             poster = icon
         art = {}
@@ -55,16 +57,16 @@ class KodiMediaset(object):
         art["clearlogo"] = kodiutils.getMedia(poster)
         return art
 
-    def __getDirectoryArt(self, fanart="fanart.jpg"):
-        return self.__geItemtArt("notify.png", fanart=fanart)
+    def __getDirectoryArt(self, fanart="mediasetinfinity-keyframe.jpg"):
+        return self.__geItemtArt("Icona_APP.png", fanart=fanart)
 
-    def __getForwardArt(self, fanart="fanart.jpg"):
+    def __getForwardArt(self, fanart="mediasetinfinity-keyframe.jpg"):
         return self.__geItemtArt("forward-darkorchid.png", fanart=fanart)
 
     def __getForwardText(self, color="darkorchid"):
         return self._getArrowText(True, kodiutils.LANGUAGE(32130), color=color)
 
-    def __getBackwardArt(self, fanart="fanart.jpg"):
+    def __getBackwardArt(self, fanart="mediasetinfinity-keyframe.jpg"):
         return self.__geItemtArt("backward-darkorchid.png", fanart=fanart)
 
     def __getBackwardText(self, color="darkorchid"):
@@ -75,13 +77,13 @@ class KodiMediaset(object):
             color, ">>" if isForward else "<<", text
         )
 
-    def __getUpArt(self, fanart="fanart.jpg"):
+    def __getUpArt(self, fanart="mediasetinfinity-keyframe.jpg"):
         return self.__geItemtArt("up-orange.png", fanart=fanart)
 
     def __getUpText(self, color="orange"):
         return self.__getOrderText("ASC", color=color)
 
-    def __getDownArt(self, fanart="fanart.jpg"):
+    def __getDownArt(self, fanart="mediasetinfinity-keyframe.jpg"):
         return self.__geItemtArt("down-orange.png", fanart=fanart)
 
     def __getDownText(self, color="orange"):
@@ -1264,12 +1266,12 @@ class KodiMediaset(object):
         if added:
             kodiutils.notify(
                 "Aggiunto a {}".format(self.contextMenuMap[context_menu]),
-                icon=kodiutils.getMedia("notify.png"),
+                icon=kodiutils.getMedia("Icona_APP.png"),
             )
         elif deleted:
             kodiutils.notify(
                 "Rimosso da {}".format(self.contextMenuMap[context_menu]),
-                icon=kodiutils.getMedia("notify.png"),
+                icon=kodiutils.getMedia("Icona_APP.png"),
             )
         update_dir = context_ui == "refresh" and (added or deleted)
         kodiutils.endScript(closedir=False, update_dir=update_dir)
