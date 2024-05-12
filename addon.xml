@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.videomediaset" name="Mediaset Infinity" provider-name="phate89, aracnoz" version="4.0.0~beta3+omega">
+<addon id="plugin.video.videomediaset" name="Mediaset Infinity" provider-name="phate89, aracnoz" version="4.0.0~beta4+omega">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.phate89" version="4.0.0~alpha1+omega"/>
@@ -20,12 +20,11 @@
         <forum>https://forum.kodi.tv/showthread.php?tid=292876</forum>
         <source>https://github.com/typhoon51280/plugin.video.videomediaset</source>
         <reuselanguageinvoker>true</reuselanguageinvoker>
-        <news>4.0.0 beta3
-      - fix episode number for soap
-      - changed artwork to match mediasetinfinity site
+        <news>4.0.0 beta4
+      - changed logo to the one from playstore (Infinity TV)
         </news>
         <assets>
-            <icon>resources/media/logo2.png</icon>
+            <icon>resources/media/logo2023_APP_512x512.png</icon>
             <fanart>resources/media/mediasetinfinity-keyframe.jpg</fanart>
         </assets>
     </extension>
