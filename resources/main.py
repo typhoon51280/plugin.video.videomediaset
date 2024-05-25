@@ -94,34 +94,6 @@ class KodiMediaset(object):
             color, "++" if order == "ASC" else "--", "Ordinamento"
         )
 
-    def __getBackwardText(self):
-        return self._getArrowText(False, kodiutils.LANGUAGE(32129))
-
-    def _getArrowText(self, isForward=True, text=""):
-        return "[COLOR magenta][B]{} {}[/B][/COLOR]".format(
-            ">>" if isForward else "<<", text
-        )
-
-    def __getUpArt(self):
-        return self.__geItemtArt("up.png")
-
-    def __getUpText(self):
-        return self.__getOrderText("ASC")
-
-    def __getDownArt(self):
-        return self.__geItemtArt("down.png")
-
-    def __getDownText(self):
-        return self.__getOrderText("DESC")
-
-    def __getOrderText(self, order="ASC"):
-        return (
-            # "[COLOR pink][B]{} {}[/B][/COLOR] [COLOR yellow][I]{}[/I][/COLOR]".format(
-            "[COLOR orange][B]{} {}[/B][/COLOR]".format(
-                "++" if order == "ASC" else "--", "Ordinamento"
-            )
-        )
-
     def __getFavouriteArt(self):
         return self.__geItemtArt("favourite.png")
 
