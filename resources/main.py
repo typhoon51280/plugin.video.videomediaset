@@ -203,7 +203,7 @@ class KodiMediaset(object):
                 # kodiutils.log("__analizza_elenco subBrandId: {}".format(pformat(prog)))
                 item_id = (
                     prog["mediasetprogram$brandId"]
-                    if prog["mediasetprogram$brandId"]
+                    if "mediasetprogram$brandId" in prog and prog["mediasetprogram$brandId"]
                     else ""
                 )
                 args["mode"] = "programma"
@@ -233,7 +233,8 @@ class KodiMediaset(object):
                     else ""
                 )
                 args["mode"] = "programma"
-                args["brand_id"] = prog["mediasettvseason$brandId"]
+                args["brand_id"] = item_id
+                args["tvSeasonId"] = prog["id"]
                 # args['sort'] = 'tvSeasonEpisodeNumber|asc'
                 # args['order'] = 'asc'
                 menuItems = self.menuItems(
@@ -345,6 +346,13 @@ class KodiMediaset(object):
                     prog["mediasetprogram$brandId"]
                     if "mediasetprogram$brandId" in prog
                     and prog["mediasetprogram$brandId"]
+                    else ""
+                )
+                args["tvSeasonId"] = (
+                    prog["id"]
+                    if "mediasettvseason$brandId" in prog
+                    and prog["mediasettvseason$brandId"]
+                    and "id" in prog and prog["id"]
                     else ""
                 )
                 menuItems = self.menuItems(
@@ -1090,14 +1098,14 @@ class KodiMediaset(object):
             #     self.elenco_sezioni_list(brandId)
 
     def elenco_sezioni_list(
-        self, brandId, sort="mediasetprogram$order|asc,tvSeasonEpisodeNumber|asc"
+        self, brand_id=None, tvSeasonId=None, sort="mediasetprogram$order|asc,tvSeasonEpisodeNumber|asc"
     ):
         kodiutils.log(
-            "[main] elenco_sezioni_list: brandId={},sort={}".format(
-                str(brandId), str(sort)
+            "[main] elenco_sezioni_list: brandId={},tvSeasonId={},sort={}".format(
+                str(brand_id), str(tvSeasonId), str(sort)
             )
         )
-        els, _ = self.med.OttieniSezioniProgramma(brandId, sort=sort)
+        els, _ = self.med.OttieniSezioniProgramma(brandId=brand_id, tvSeasonId=tvSeasonId, sort=sort)
         # if not els:
         # els = []
         # if len(els) == 2:
@@ -1124,7 +1132,7 @@ class KodiMediaset(object):
                         properties={"SpecialSort": "top"},
                         arts=arts,
                     )
-                els.pop(0)
+                # els.pop(0)
                 self.__analizza_elenco(els, arts=arts)
             elif (
                 len(els) == 2
@@ -1651,8 +1659,10 @@ class KodiMediaset(object):
                             params, ("sub_brand_id", "mode", "sort", "page", "size")
                         )
                     )
-                elif "brand_id" in params:
-                    self.elenco_sezioni_list(params["brand_id"])
+                else:
+                    self.elenco_sezioni_list(**self.sliceParams(
+                            params, ("brand_id", "tvSeasonId",)
+                        ))
             if params["mode"] == "video":
                 if "pid" in params:
                     self.riproduci_video(
