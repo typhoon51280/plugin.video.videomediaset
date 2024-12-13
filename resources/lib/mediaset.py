@@ -1111,10 +1111,17 @@ class Mediaset(rutils.RUtils):
             args["sort"] = sort + "|" + order
         return self.__getEntriesFromUrl(url, args)
 
-    def OttieniSezioniProgramma(self, brandId, sort=None):
-        self.log("Trying to get the sections from brand id {}".format(brandId), 4)
-        url = "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-brands"
-        args = {"byCustomValue": "{{brandId}}{{{brandId}}}".format(brandId=brandId)}
+    def OttieniSezioniProgramma(self, brandId=None, tvSeasonId=None, sort=None):
+        if tvSeasonId:
+            self.log("Trying to get the sections from tvSeasonId {}".format(tvSeasonId), 4)
+            url = "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-subbrands-v2"
+            args = {"byTvSeasonId": tvSeasonId}
+        elif brandId:
+            self.log("Trying to get the sections from brand id {}".format(brandId), 4)
+            url = "https://feed.entertainment.tv.theplatform.eu/f/PR1GhC/mediaset-prod-all-subbrands-v2"
+            args = {"byCustomValue": "{{brandId}}{{{brandId}}}".format(brandId=brandId)}
+        else:
+            return False
         if sort:
             args["sort"] = sort
         return self.__getEntriesFromUrl(url, args)
